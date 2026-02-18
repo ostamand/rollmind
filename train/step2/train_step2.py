@@ -71,6 +71,7 @@ def main():
     print(f"Datasets loaded: {len(train_dataset)} train, {len(eval_dataset)} validation.")
 
     # 5. SFT Configuration
+    eval_steps = cfg.get("eval_steps", 50)
     sft_config = SFTConfig(
         output_dir=cfg["output_dir"],
         learning_rate=cfg.get("learning_rate", 5e-5),
@@ -82,9 +83,9 @@ def main():
         fp16=not use_bf16,
         logging_steps=10,
         eval_strategy="steps",
-        eval_steps=cfg.get("eval_steps", 50),
+        eval_steps=eval_steps,
         save_strategy="steps",
-        save_steps=100,
+        save_steps=cfg.get("save_steps", eval_steps), # Default to eval_steps to avoid ValueError
         load_best_model_at_end=True,
         metric_for_best_model="loss",
         optim="paged_adamw_32bit",
@@ -112,11 +113,19 @@ def main():
 
     # 8. Train
     print("Starting Step 2 training (Instruction Tuning)...")
-    trainer.train()
+    train_result = trainer.train()
 
+    # 9. Save Metrics and Model
     print(f"Saving final model to {cfg['output_dir']}...")
     trainer.model.save_pretrained(cfg["output_dir"])
     tokenizer.save_pretrained(cfg["output_dir"])
+
+    # Save training metrics
+    metrics = train_result.metrics
+    trainer.save_metrics("train", metrics)
+    trainer.save_state() # Saves trainer_state.json with log_history
+
+    print("Training metrics saved to output directory.")
 
 if __name__ == "__main__":
     main()

@@ -4,6 +4,8 @@ accelerate
 bitsandbytes
 datasets
 trl
+google-cloud-aiplatform
+python-dotenv
 
 torch
 scipy

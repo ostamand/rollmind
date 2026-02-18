@@ -7,14 +7,14 @@
 - **Language:** Python
 - **Frameworks:** Hugging Face `transformers`, `peft` (LoRA), `trl` (SFTTrainer), `datasets`.
 - **Hardware Optimization:** `bitsandbytes` (4-bit quantization), `accelerate`.
-- **API Integration:** Google Generative AI (Gemini API) for synthetic data generation.
+- **API Integration:** Vertex AI SDK (Gemini 3 Flash Preview) for synthetic data generation.
 
 ### Architecture
 The project follows a multi-step fine-tuning workflow:
 1.  **Data Preparation:** Chunking markdown files into semantic units.
 2.  **Step 1 (Domain Adaptation):** Continued pre-training on raw text chunks to learn terminology.
-3.  **Instruction Data Generation:** Using Gemini API to create Q&A pairs from domain chunks.
-4.  **Step 2 (Instruction Tuning):** Fine-tuning the domain-adapted model on Q&A pairs.
+3.  **Instruction Data Generation:** Using Vertex AI to create Q&A pairs from all Step 1 chunks.
+4.  **Step 2 (Instruction Tuning):** Fine-tuning the domain-adapted model on synthetic Q&A pairs.
 5.  **Evaluation & Inference:** Measuring perplexity and interactive testing.
 
 ## Building and Running
@@ -26,6 +26,9 @@ pip install -r requirements.txt
 
 # Login to Hugging Face (Gemma is gated)
 huggingface-cli login
+
+# Login to Google Cloud ADC (Required for Vertex AI)
+gcloud auth application-default login
 ```
 
 ### Data Pipeline
@@ -33,8 +36,9 @@ huggingface-cli login
 # 1. Chunking Markdown
 python3 prepare/prepare_step1_data.py
 
-# 2. Generating Q&A (Requires Gemini API Key)
-python3 prepare/generate_qa.py --api_key <YOUR_API_KEY>
+# 2. Generating Q&A (Requires Vertex AI setup)
+# Processes all files in data/step1/ and splits into data/step2/train_qa.jsonl and val_qa.jsonl
+python3 prepare/generate_qa.py
 ```
 
 ### Training
@@ -49,14 +53,13 @@ python3 train/step2/train_step2.py --config train/step2/config_step2.json
 ### Evaluation & Inference
 ```bash
 # Evaluate Perplexity
-python3 eval/evaluate_model.py --model_id google/gemma-2b-it --adapter_path ./out/step2 --dataset_path data/step1/val_chunks.jsonl
+python3 eval/evaluate_model.py --model_id google/gemma-2b-it --adapter_path ./out/step2 --dataset_path data/step2/val_qa.jsonl
 
 # Interactive Inference
 python3 inference.py \
     --model_id google/gemma-2b-it \
-    --adapter_path ./out/step1/checkpoint-100 \
-    --prompt "What is the hit point roll dice for a priest" \
-    --no_template
+    --adapter_path ./out/step2 \
+    --prompt "What is the hit point roll dice for a priest"
 ```
 
 ## Development Conventions

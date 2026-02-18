@@ -9,10 +9,15 @@ This project provides a simple, structured workflow for fine-tuning a Gemma mode
 pip install -r requirements.txt
 ```
 
-### Hugging Face Authentication
-Gemma is a gated model. Ensure you have accepted the license on Hugging Face and log in via the CLI:
+### Authentication
+**Hugging Face:** Gemma is a gated model. Log in to download weights:
 ```bash
 huggingface-cli login
+```
+
+**Google Cloud (Vertex AI):** Required for Q&A generation in Step 3:
+```bash
+gcloud auth application-default login
 ```
 
 ## 2. Step 1: Data Preparation (Domain Adaptation)
@@ -39,12 +44,16 @@ python3 train/step1/train_step1.py --config train/step1/config_step1.json
 
 ## 4. Step 3: Q&A Generation (Instruction Tuning Data)
 
-To make the model an "assistant," we generate synthetic Question-Answer pairs from our training chunks using the Gemini API.
+To make the model an "assistant," we generate synthetic Question-Answer pairs from our training chunks using Vertex AI Gemini. This script processes all `.jsonl` files in `data/step1` and splits the results into train/val sets.
 
 ```bash
-python3 prepare/generate_qa.py --api_key YOUR_GEMINI_API_KEY
+# Option 1: Use command line arguments
+python3 prepare/generate_qa.py --project YOUR_PROJECT_ID --location global
+
+# Option 2: Use environment variables (via .env file)
+python3 prepare/generate_qa.py
 ```
-**Output:** `data/train_qa.jsonl` formatted as User/Assistant turns.
+**Output:** `data/step2/train_qa.jsonl` and `data/step2/val_qa.jsonl` formatted as Official Gemma Instruction turns.
 
 ## 5. Step 4: Instruction Fine-Tuning
 
