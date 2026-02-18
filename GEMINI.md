@@ -11,9 +11,9 @@
 
 ### Architecture
 The project follows a multi-step fine-tuning workflow:
-1.  **Data Preparation:** Chunking markdown files into semantic units.
-2.  **Step 1 (Domain Adaptation):** Continued pre-training on raw text chunks to learn terminology.
-3.  **Instruction Data Generation:** Using Vertex AI to create Q&A pairs from all Step 1 chunks.
+1.  **Data Preparation:** Chunking markdown files into semantic units, including a full-corpus file.
+2.  **Instruction Data Generation:** Using Vertex AI to create Q&A pairs from all manual chunks.
+3.  **Step 1 (Domain Adaptation):** Continued pre-training on the 100% full corpus. Validation is performed against the synthetic Q&A set to monitor assistant behavioral health while learning rules.
 4.  **Step 2 (Instruction Tuning):** Fine-tuning the domain-adapted model on synthetic Q&A pairs.
 5.  **Evaluation & Inference:** Measuring perplexity and interactive testing.
 
@@ -33,17 +33,17 @@ gcloud auth application-default login
 
 ### Data Pipeline
 ```bash
-# 1. Chunking Markdown
+# 1. Chunking Markdown (Produces full_chunks.jsonl)
 python3 prepare/prepare_step1_data.py
 
-# 2. Generating Q&A (Requires Vertex AI setup)
-# Processes all files in data/step1/ and splits into data/step2/train_qa.jsonl and val_qa.jsonl
+# 2. Generating Q&A (Must be run before Step 1 Training for validation)
+# Can use --project/--location or GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION env vars
 python3 prepare/generate_qa.py
 ```
 
 ### Training
 ```bash
-# Step 1: Domain Adaptation
+# Step 1: Domain Adaptation (Trains on 100% rules, validates on Q&A)
 python3 train/step1/train_step1.py --config train/step1/config_step1.json
 
 # Step 2: Instruction Fine-tuning
@@ -74,8 +74,12 @@ python3 inference.py \
   <answer><end_of_turn>
   ```
 
+### Training Strategy: Fact Coverage
+- **100% Rule Training:** To ensure the model knows all rules, Step 1 trains on 100% of the manual chunks. 
+- **Cross-Set Validation:** Validation during Step 1 is done using the Q&A pairs from Step 2 to ensure rule learning doesn't break conversational ability.
+
 ### Model Configuration
-- **Quantization:** 4-bit NormalFloat (NF4) with double quantization is used by default to fit training on 12GB VRAM GPUs.
+- **Quantization:** 4-bit NormalFloat (NF4) with double quantization is used by default.
 - **LoRA:** Targeting all linear modules (`q_proj`, `v_proj`, etc.) for maximum effectiveness.
 - **Precision:** Uses `bf16` if supported by hardware, otherwise falls back to `fp16`.
 
@@ -88,4 +92,4 @@ python3 inference.py \
 - `train/`: Training logic and step-specific configurations.
 - `eval/`: Metrics and validation logic.
 - `data/`: Source markdown, intermediate chunks, and final training datasets.
-- `out/`: Checkpoints and saved LoRA adapters.
+- `out/`: Checkpoints, results, and saved LoRA adapters.

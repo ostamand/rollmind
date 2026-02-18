@@ -18,11 +18,15 @@ You are an expert D&D 5e (2024) content creator. Your task is to generate high-q
 
 --- INSTRUCTIONS ---
 1. Generate EXACTLY 10 diverse QA pairs.
-2. Questions must be specific and varied (e.g., asking about rules, costs, class features, or table data).
+2. Questions must be specific and varied (e.g., asking about rules, costs, class features, or "how-to" scenarios).
 3. ANSWERS MUST BE CONCISE but include enough context for clarity.
-4. TABLE HANDLING: If the information comes from a table, the answer MUST include the relevant column headers and the specific row data to ensure the context is preserved (e.g., "According to the Spellcasting Services table, a Level 3 spell costs 300 GP and is available in a Town or City.").
-5. DO NOT use outside knowledge; base answers ONLY on the provided text.
-6. Use a professional and helpful tone.
+4. NO META-TALK: Do not start answers with "According to the text," "Based on the manual," or "The provided section states." Jump directly into the rule.
+5. MARKDOWN: Use **bolding** for game mechanics, keywords, conditions (e.g., **Prone**, **Grappled**), and specific ability scores (e.g., **Strength**).
+6. TABLE HANDLING: If the information comes from a table, the answer MUST include the relevant column headers and the specific row data to ensure the context is preserved.
+7. OPTIONS & CHOICES: If a rule involves a choice (e.g., "choose two of the following..."), ensure the answer mentions that a choice is required.
+8. DO NOT use outside knowledge; base answers ONLY on the provided text.
+9. DO NOT reference chapter numbers, section titles, or page numbers. 
+10. Use a professional, authoritative, and helpful tone.
 
 Format the output as a valid JSON list of objects:
 [
@@ -49,7 +53,7 @@ TEXT SECTION:
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Q&A pairs using Vertex AI Gemini")
-    parser.add_argument("--input_dir", type=str, default="data/step1", help="Directory containing input JSONL chunks")
+    parser.add_argument("--input_file", type=str, default="data/step1/full_chunks.jsonl", help="Input JSONL chunks file")
     parser.add_argument("--output_dir", type=str, default="data/step2", help="Directory to save output QA files")
     parser.add_argument("--project", type=str, default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="Google Cloud Project ID")
     parser.add_argument("--location", type=str, default=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"), help="Google Cloud Region")
@@ -65,16 +69,14 @@ def main():
     vertexai.init(project=args.project, location=args.location)
     model = GenerativeModel("gemini-3-flash-preview")
 
-    # 1. Collect all chunks from all .jsonl files in input_dir
-    input_files = glob.glob(os.path.join(args.input_dir, "*.jsonl"))
-    print(f"Found {len(input_files)} input files in {args.input_dir}")
+    # 1. Collect all chunks from the specified input_file
+    print(f"Reading chunks from {args.input_file}")
     
     all_chunks = []
-    for fpath in input_files:
-        with open(fpath, 'r', encoding='utf-8') as f:
-            for line in f:
-                if line.strip():
-                    all_chunks.append(json.loads(line)["text"])
+    with open(args.input_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.strip():
+                all_chunks.append(json.loads(line)["text"])
 
     if args.limit:
         all_chunks = all_chunks[:args.limit]

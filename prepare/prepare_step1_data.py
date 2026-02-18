@@ -101,6 +101,14 @@ def main():
             json.dump({"text": chunk}, f)
             f.write('\n')
             
+    # Save full set for 100% coverage training
+    full_file = "data/step1/full_chunks.jsonl"
+    with open(full_file, 'w', encoding='utf-8') as f:
+        for chunk in all_chunks:
+            json.dump({"text": chunk}, f)
+            f.write('\n')
+            
+    print(f"Saved {len(all_chunks)} chunks to {full_file}")
     print(f"Saved {len(train_chunks)} chunks to {train_file}")
     print(f"Saved {len(val_chunks)} chunks to {val_file}")
 
