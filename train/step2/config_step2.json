@@ -1,0 +1,16 @@
+{
+    "model_id": "google/gemma-2b-it",
+    "adapter_path": "./out/step1",
+    "train_path": "data/train_qa.jsonl",
+    "val_path": "data/val_chunks.jsonl",
+    "output_dir": "./out/step2",
+    "learning_rate": 5e-5,
+    "max_steps": 300,
+    "eval_steps": 50,
+    "warmup_steps": 30,
+    "weight_decay": 0.01,
+    "lr_scheduler_type": "cosine",
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "max_seq_length": 1024
+}
