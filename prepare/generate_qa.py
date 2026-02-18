@@ -17,7 +17,7 @@ def generate_qa_pairs(text, model):
 You are an expert D&D 5e (2024) content creator. Your task is to generate high-quality, diverse Question-Answer pairs from the provided D&D manual section.
 
 --- INSTRUCTIONS ---
-1. Generate EXACTLY 5 diverse QA pairs.
+1. Generate EXACTLY 10 diverse QA pairs.
 2. Questions must be specific and varied (e.g., asking about rules, costs, class features, or table data).
 3. ANSWERS MUST BE CONCISE but include enough context for clarity.
 4. TABLE HANDLING: If the information comes from a table, the answer MUST include the relevant column headers and the specific row data to ensure the context is preserved (e.g., "According to the Spellcasting Services table, a Level 3 spell costs 300 GP and is available in a Town or City.").

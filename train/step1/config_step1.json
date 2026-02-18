@@ -2,7 +2,7 @@
     "model_id": "google/gemma-2b-it",
     "train_path": "data/step1/train_chunks.jsonl",
     "val_path": "data/step1/val_chunks.jsonl",
-    "output_dir": "./out/step1",
+    "output_dir": "./out/step1/test1",
     "learning_rate": 1e-4,
     "max_steps": 150,
     "eval_steps": 30,
