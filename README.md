@@ -38,6 +38,8 @@ python3 prepare/generate_qa.py
 ```
 **Output:** `data/step2/train_qa.jsonl` and `data/step2/val_qa.jsonl`.
 
+**Note on Resuming:** The script automatically tracks progress in `data/step2/raw_qa.jsonl`. If the process is interrupted, simply run the command again to resume from the last completed chunk.
+
 ## 4. Step 3: Continued Pre-training (Domain Adaptation)
 
 Train the model on the full text of the manual (`full_chunks.jsonl`) to ensure 100% rule coverage. We use the Q&A validation set to ensure the model doesn't "forget" how to be an assistant.

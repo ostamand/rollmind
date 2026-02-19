@@ -60,6 +60,7 @@ def main():
     parser = argparse.ArgumentParser(description="Prepare D&D Markdown data for fine-tuning.")
     parser.add_argument("--max_chars", type=int, default=3000, help="Maximum characters per chunk (default: 3000)")
     parser.add_argument("--input_pattern", type=str, default="data/player-handbook-2024/*.md", help="Glob pattern for input files")
+    parser.add_argument("--prefix", type=str, default="", help="Prefix for the output files (e.g., 'spells_')")
     
     args = parser.parse_args()
     
@@ -87,22 +88,26 @@ def main():
     train_chunks = all_chunks[:split_idx]
     val_chunks = all_chunks[split_idx:]
     
+    # Ensure output directory exists
+    import os
+    os.makedirs("data/step1", exist_ok=True)
+    
     # Save training set
-    train_file = "data/step1/train_chunks.jsonl"
+    train_file = f"data/step1/{args.prefix}train_chunks.jsonl"
     with open(train_file, 'w', encoding='utf-8') as f:
         for chunk in train_chunks:
             json.dump({"text": chunk}, f)
             f.write('\n')
             
     # Save validation set
-    val_file = "data/step1/val_chunks.jsonl"
+    val_file = f"data/step1/{args.prefix}val_chunks.jsonl"
     with open(val_file, 'w', encoding='utf-8') as f:
         for chunk in val_chunks:
             json.dump({"text": chunk}, f)
             f.write('\n')
             
     # Save full set for 100% coverage training
-    full_file = "data/step1/full_chunks.jsonl"
+    full_file = f"data/step1/{args.prefix}full_chunks.jsonl"
     with open(full_file, 'w', encoding='utf-8') as f:
         for chunk in all_chunks:
             json.dump({"text": chunk}, f)

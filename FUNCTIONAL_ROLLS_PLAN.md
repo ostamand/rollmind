@@ -3,7 +3,7 @@
 This document outlines the strategy for evolving Rollmind from a D&D knowledge assistant into a functional game assistant capable of calculating and outputting dice rolls based on character context.
 
 ## 1. Objective
-Enable the model to ingest character details and output specific dice rolls for requested actions using a custom tag: `<roll>XdY+Z</roll>`.
+Enable the model to ingest character details and output specific dice rolls for requested actions (initially focusing on **Spells**) using a custom tag: `<roll>XdY+Z</roll>`. The model will perform the calculation (e.g., adding Proficiency and Ability modifiers) internally based on the provided character context.
 
 ## 2. Core Strategy: Multi-Task Step 2
 I recommend **combining** this functionality into **Step 2 (Instruction Tuning)** rather than a separate Step 3.
@@ -15,42 +15,41 @@ I recommend **combining** this functionality into **Step 2 (Instruction Tuning)*
 
 ## 3. Dataset Generation (`prepare/generate_rolls.py`)
 
-Generating accurate rolls requires combining data from multiple chapters. A Level 1 Fighter's attack with a Longsword depends on **Chapter 3** (Proficiency Bonus), **Chapter 2** (Ability Modifiers), and **Chapter 6** (Weapon Damage).
+Generating accurate rolls requires grounding the model in factual spell data and character statistics.
 
-### The Character Profile
-Every training example will include a comprehensive profile:
-*   **Race & Class:** (e.g., High Elf Wizard)
-*   **Level:** (1-20)
-*   **Stats:** Str, Dex, Con, Int, Wis, Cha (expressed as values like 16, 8, etc.)
-*   **Proficiencies:** Skills or weapons the character is proficient in.
+### A. Knowledge Extraction
+Before generating training data, we extract a structured "Knowledge Base" from the source Markdown files (initially for Spells).
+*   **Source:** `data/spells.md`
+*   **Target:** `data/spells.json` (Structured data: level, damage dice, save type, scaling, etc.)
+*   **Tool:** A one-time parsing script using Gemini to convert MD to JSON.
 
-### Script Logic: Cross-Chapter Contextualization
-The `generate_rolls.py` script will use a **"Rule-Contextualized Generation"** approach:
+### B. The Character Profile (Automatic Injection)
+Every training example includes a profile. In the final app, this is injected automatically before the user prompt.
+*   **Format:**
+    ```text
+    Character Profile: [Class] [Level]. Stats: STR [X] (+M)... 
+    Spellcasting: Ability [Stat], DC [DC], Attack Bonus [Bonus].
+    ```
+*   **Generation:** `prepare/generate_rolls.py` will programmatically generate random valid profiles to provide training variance.
 
-1.  **Context Loading:** The script will load key reference "Summaries" from the markdown files:
-    *   *Classes Table:* For Level-to-Proficiency mapping.
-    *   *Equipment Table:* For weapon damage dice and properties.
-    *   *Ability Score Rules:* For calculating modifiers from raw scores.
-2.  **Persona Creation:** The script will programmatically generate random valid character profiles (e.g., "Level 5 Dwarf Cleric with Str 14, Wis 18...").
-3.  **Action Prompting:** It will feed Vertex AI a character profile + a specific manual chunk (e.g., a spell description or weapon rule).
-4.  **Chain-of-Thought Generation:** The generator (Gemini 3 Flash) will be instructed to:
-    *   *Identify the Rule:* "This action uses the 'Attack' rule from Chapter 1."
-    *   *Identify the Dice:* "Longswords do 1d8 damage."
-    *   *Identify the Modifiers:* "Level 5 has a +3 Proficiency. Strength 14 is a +2 Modifier."
-    *   *Produce the JSON:* Output the final User/Assistant turn with the `<roll>` tags.
+### C. Script Logic: Programmatic Grounding
+Instead of asking the LLM to "guess" the roll, the generation script *tells* the LLM what the roll should be.
 
-### Example Dataset Entry:
-```json
-{
-  "text": "<start_of_turn>user
-Character: Level 5 Hill Dwarf Fighter. Stats: Str 18 (+4), Dex 12 (+1), Con 16 (+3), Int 10 (+0), Wis 12 (+1), Cha 8 (-1). 
-Action: I want to attack with my Battleaxe.<end_of_turn>
-<start_of_turn>model
-As a Level 5 Fighter, your Proficiency Bonus is +3. Using your Strength (+4) for a Battleaxe attack, your total bonus to hit is +7. 
-Attack Roll: <roll>1d20+7</roll>
-On a hit, you deal <roll>1d8+4</roll> slashing damage (one-handed) or <roll>1d10+4</roll> if using it with two hands.<end_of_turn>"
-}
-```
+1.  **Selection:** Pick a random Spell (from `spells.json`) and a random valid Character Profile.
+2.  **Calculation:** A Python function calculates the exact dice and DC (e.g., "Fireball at 4th level for a Wizard with 18 Int and +3 Prof is 9d6 damage and DC 15").
+3.  **Prompting:** Feed the **Profile + Spell + Calculated Math** to Gemini.
+4.  **Completion:** Gemini generates a natural conversation:
+    *   **User:** "I cast Fireball at 4th level!"
+    *   **Model:** "You unleash a 4th-level Fireball. Targets must make a DC 15 Dexterity save. Damage: <roll>9d6</roll> fire."
+
+### D. Advanced Logic & Edge Cases
+The generation script must handle specific D&D mechanics to ensure high-quality training data:
+
+1.  **Multiple Rolls (Beams/Targets):** For spells like *Scorching Ray* or *Eldritch Blast*, the script must provide math for multiple beams. The model should be trained to output multiple `<roll>` tags (e.g., "Beam 1: <roll>1d20+5</roll> to hit...").
+2.  **Dual Scaling Logic:**
+    *   **Cantrips:** Scale based on **Character Level** (jumps at levels 5, 11, and 17).
+    *   **Leveled Spells:** Scale based on the **Slot Level** used for the cast.
+3.  **Safety & Validation:** Include "Negative" examples where a user requests a spell level higher than their character allows (e.g., Level 1 Wizard casting *Fireball*). The model should politely explain the limitation and suggest a valid alternative.
 
 ## 4. Technical Implementation Steps
 
@@ -66,7 +65,7 @@ Register `<roll>` and `</roll>` as **Special Tokens**.
 Update `inference.py` to support a `--character` flag which automatically formats the prompt to include the profile header.
 
 ## 5. Implementation Roadmap
-1.  **Persona Utility:** Write a Python function to generate random character stat blocks.
-2.  **Roll Generator:** Implement `prepare/generate_rolls.py` with Vertex AI.
-3.  **Merging:** Combine all Step 2 datasets.
-4.  **Fine-tuning:** Run Step 2 with special token logic.
+1.  **Data Extraction:** Create `prepare/extract_spells.py` to generate `data/spells.json`.
+2.  **Persona Utility:** Write a Python function to generate random character stat blocks.
+3.  **Roll Generator:** Implement `prepare/generate_rolls.py` (Programmatic Calculation + Gemini for natural language).
+4.  **Fine-tuning:** Run Step 2 with special token logic and mixed dataset.

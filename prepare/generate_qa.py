@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--location", type=str, default=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"), help="Google Cloud Region")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of chunks to process (for testing)")
     parser.add_argument("--split_ratio", type=float, default=0.9, help="Ratio of train vs val split")
+    parser.add_argument("--prefix", type=str, default="", help="Prefix for the output files (e.g., 'spells_')")
     args = parser.parse_args()
 
     if not args.project:
@@ -84,20 +85,56 @@ def main():
     print(f"Generating Q&A for {len(all_chunks)} total chunks using Vertex AI...")
     
     # 2. Generate QA pairs
-    all_qa_entries = []
-    for chunk in tqdm(all_chunks):
-        qa_pairs = generate_qa_pairs(chunk, model)
-        for qa in qa_pairs:
-            # Format for SFT training: Official Gemma Instruction format
-            entry = {
-                "text": f"<start_of_turn>user\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
-            }
-            all_qa_entries.append(entry)
-        
-        # Rate limiting safety
-        time.sleep(1) 
+    raw_file = os.path.join(args.output_dir, f"{args.prefix}raw_qa.jsonl")
+    
+    # Check for existing progress
+    last_processed_idx = -1
+    if os.path.exists(raw_file):
+        print(f"Checking existing progress in {raw_file}...")
+        with open(raw_file, 'r', encoding='utf-8') as f_raw:
+            for line in f_raw:
+                if line.strip():
+                    try:
+                        data = json.loads(line)
+                        if "chunk_idx" in data:
+                            last_processed_idx = max(last_processed_idx, data["chunk_idx"])
+                    except:
+                        continue
+        if last_processed_idx >= 0:
+            print(f"Resuming from chunk {last_processed_idx + 1}")
 
-    # 3. Shuffle and Split
+    print(f"Generating Q&A. Progress saved to {raw_file}")
+    
+    with open(raw_file, 'a', encoding='utf-8') as f_raw:
+        for idx, chunk in enumerate(tqdm(all_chunks)):
+            if idx <= last_processed_idx:
+                continue
+                
+            qa_pairs = generate_qa_pairs(chunk, model)
+            for qa in qa_pairs:
+                # Format for SFT training: Official Gemma Instruction format
+                entry = {
+                    "chunk_idx": idx,
+                    "text": f"<start_of_turn>user\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
+                }
+                f_raw.write(json.dumps(entry) + "\n")
+            
+            f_raw.flush()
+            # Rate limiting safety
+            time.sleep(1) 
+
+    # 3. Read all, Shuffle and Split
+    print("Finalizing dataset (shuffling and splitting)...")
+    all_qa_entries = []
+    with open(raw_file, 'r', encoding='utf-8') as f_raw:
+        for line in f_raw:
+            if line.strip():
+                entry = json.loads(line)
+                # Remove internal tracking index before saving final splits
+                if "chunk_idx" in entry:
+                    del entry["chunk_idx"]
+                all_qa_entries.append(entry)
+
     random.seed(42)
     random.shuffle(all_qa_entries)
     
@@ -106,8 +143,8 @@ def main():
     val_qa = all_qa_entries[split_idx:]
 
     # 4. Save results
-    train_file = os.path.join(args.output_dir, "train_qa.jsonl")
-    val_file = os.path.join(args.output_dir, "val_qa.jsonl")
+    train_file = os.path.join(args.output_dir, f"{args.prefix}train_qa.jsonl")
+    val_file = os.path.join(args.output_dir, f"{args.prefix}val_qa.jsonl")
 
     with open(train_file, 'w', encoding='utf-8') as f:
         for entry in train_qa:
