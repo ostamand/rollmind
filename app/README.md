@@ -8,6 +8,18 @@ This directory contains the full-stack implementation of the RollMind Oracle, a 
 
 ---
 
+## 🔥 One-Step Start
+
+You can now launch both the **Backend API** and **Frontend Web** simultaneously using the included startup script.
+
+From the `app/` directory:
+```bash
+./start.sh
+```
+This will start the FastAPI server on port 8000 and the Next.js development server on port 3000. Press `Ctrl+C` to stop both.
+
+---
+
 ## 1. Backend Setup & Start
 
 ### Requirements
