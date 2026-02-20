@@ -18,6 +18,7 @@ load_dotenv()
 # Initial configuration from environment
 DEFAULT_MODEL_ID = os.getenv("MODEL_ID", "google/gemma-7b-it")
 DEFAULT_ADAPTER_PATH = os.getenv("ADAPTER_PATH")
+ADAPTER_BASE_DIR = os.getenv("ADAPTER_BASE_DIR", "../../out/step2/")
 MAX_GPU_MEMORY = os.getenv("MAX_GPU_MEMORY", "7.5GiB")
 OFFLOAD_TIMEOUT = int(os.getenv("OFFLOAD_TIMEOUT_MINUTES", "10")) * 60
 
@@ -27,17 +28,23 @@ class ModelManager:
         self.tokenizer = None
         self.model_id = DEFAULT_MODEL_ID
         self.adapter_path = DEFAULT_ADAPTER_PATH
+        self.adapter_base_dir = ADAPTER_BASE_DIR
         self.last_active = 0
         self.is_loading = False
         self._lock = asyncio.Lock()
         self._offload_task = None
 
-    async def update_config(self, model_id: Optional[str] = None, adapter_path: Optional[str] = None):
+    async def update_config(self, model_id: Optional[str] = None, adapter_path: Optional[str] = None, adapter_base_dir: Optional[str] = None):
         """Updates the configuration and triggers a reload if necessary."""
         async with self._lock:
             changed = False
             if model_id is not None and model_id != self.model_id:
                 self.model_id = model_id
+                changed = True
+            if adapter_base_dir is not None and adapter_base_dir != self.adapter_base_dir:
+                self.adapter_base_dir = adapter_base_dir
+                # If base dir changes, we should re-evaluate the adapter path if it was relative
+                # but for now we'll just mark as changed to be safe.
                 changed = True
             if adapter_path is not None and adapter_path != self.adapter_path:
                 self.adapter_path = adapter_path

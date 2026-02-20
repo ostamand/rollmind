@@ -13,7 +13,7 @@ interface Entry {
   isStreaming: boolean;
 }
 
-const ORACLE_MESSAGES = [
+const PROCESSING_MESSAGES = [
   "Consulting the archival scrolls",
   "Whispering to the weave",
   "Scrying the ancient texts",
@@ -23,17 +23,18 @@ const ORACLE_MESSAGES = [
   "Invoking the spirits of the library",
 ];
 
-export default function OraclePage() {
+export default function RollMindPage() {
   const [inquiry, setInquiry] = useState("");
   const [history, setHistory] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState(ORACLE_MESSAGES[0]);
-  const [config, setConfig] = useState({ model_id: "", adapter_path: "" });
+  const [processingMessage, setProcessingMessage] = useState(PROCESSING_MESSAGES[0]);
+  const [config, setConfig] = useState({ model_id: "", adapter_path: "", adapter_base_dir: "" });
   const [newConfig, setNewConfig] = useState({
     model_id: "",
     adapter_path: "",
+    adapter_base_dir: "",
   });
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -42,9 +43,9 @@ export default function OraclePage() {
     if (!isLoading) return;
     const interval = setInterval(() => {
       setProcessingMessage(prev => {
-        const currentIndex = ORACLE_MESSAGES.indexOf(prev);
-        const nextIndex = (currentIndex + 1) % ORACLE_MESSAGES.length;
-        return ORACLE_MESSAGES[nextIndex];
+        const currentIndex = PROCESSING_MESSAGES.indexOf(prev);
+        const nextIndex = (currentIndex + 1) % PROCESSING_MESSAGES.length;
+        return PROCESSING_MESSAGES[nextIndex];
       });
     }, 2000 + Math.random() * 1000);
     return () => clearInterval(interval);
@@ -66,7 +67,7 @@ export default function OraclePage() {
       .then((data) => {
         setConfig(data);
         // Strip prefix if it exists to make it easier for the user
-        const cleanPath = data.adapter_path?.replace("../../out/step2/", "") ||
+        const cleanPath = data.adapter_path?.replace(data.adapter_base_dir, "") ||
           "";
         setNewConfig({ ...data, adapter_path: cleanPath });
       })
@@ -88,7 +89,7 @@ export default function OraclePage() {
         .then((data) => {
           setConfig(data);
           const cleanPath =
-            data.adapter_path?.replace("../../out/step2/", "") || "";
+            data.adapter_path?.replace(data.adapter_base_dir, "") || "";
           setNewConfig({ ...data, adapter_path: cleanPath });
         })
         .catch((err) => console.error("Failed to fetch config", err));
@@ -97,9 +98,9 @@ export default function OraclePage() {
 
   const handleUpdateConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Prepend the out/step2 path if a name is provided
+    // Prepend the adapter_base_dir path if a name is provided
     const finalPath = newConfig.adapter_path.trim()
-      ? `../../out/step2/${newConfig.adapter_path.trim()}`
+      ? `${newConfig.adapter_base_dir}${newConfig.adapter_path.trim()}`
       : "";
 
     try {
@@ -153,7 +154,7 @@ export default function OraclePage() {
         body: JSON.stringify({ prompt: currentInquiry }),
       });
 
-      if (!response.ok) throw new Error("Oracle connection failed.");
+      if (!response.ok) throw new Error("Connection failed.");
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -208,7 +209,7 @@ export default function OraclePage() {
           entry.id === entryId
             ? {
               ...entry,
-              answer: "Error: The Oracle is currently unreachable.",
+              answer: "Error: The system is currently unreachable.",
               isStreaming: false,
             }
             : entry
@@ -262,7 +263,7 @@ export default function OraclePage() {
         >
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <h2 className={styles.modalTitle}>Oracle Configuration</h2>
+              <h2 className={styles.modalTitle}>Configuration</h2>
               <button onClick={() => setIsConfigOpen(false)} className={styles.closeModalButton}>
                 <X size={24} color="var(--accent)" />
               </button>
@@ -279,9 +280,19 @@ export default function OraclePage() {
                 />
               </div>
               <div className={styles.formGroup}>
+                <label>Adapter Base Directory</label>
+                <input
+                  type="text"
+                  value={newConfig.adapter_base_dir}
+                  onChange={(e) =>
+                    setNewConfig({ ...newConfig, adapter_base_dir: e.target.value })}
+                  placeholder="../../out/step2/"
+                />
+              </div>
+              <div className={styles.formGroup}>
                 <label>Adapter (LoRA)</label>
                 <div className={styles.pathInputWrapper}>
-                  <span className={styles.pathPrefix}>../../out/step2/</span>
+                  <span className={styles.pathPrefix}>{newConfig.adapter_base_dir}</span>
                   <input
                     type="text"
                     value={newConfig.adapter_path}
@@ -295,7 +306,63 @@ export default function OraclePage() {
                   />
                 </div>
                 <small>
-                  Relative to Step 2 outputs. Empty = Base Model only.
+                  Empty = Base Model only.
+                </small>
+              </div>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  onClick={() => setIsConfigOpen(false)}
+                  className={styles.cancelButton}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className={styles.saveButton}>
+                  Update
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+              <div className={styles.formGroup}>
+                <label>Base Model ID</label>
+                <input
+                  type="text"
+                  value={newConfig.model_id}
+                  onChange={(e) =>
+                    setNewConfig({ ...newConfig, model_id: e.target.value })}
+                  placeholder="google/gemma-7b-it"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>Adapter Base Directory</label>
+                <input
+                  type="text"
+                  value={newConfig.adapter_base_dir}
+                  onChange={(e) =>
+                    setNewConfig({ ...newConfig, adapter_base_dir: e.target.value })}
+                  placeholder="../../out/step2/"
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>Adapter (LoRA)</label>
+                <div className={styles.pathInputWrapper}>
+                  <span className={styles.pathPrefix}>{newConfig.adapter_base_dir}</span>
+                  <input
+                    type="text"
+                    value={newConfig.adapter_path}
+                    onChange={(e) =>
+                      setNewConfig({
+                        ...newConfig,
+                        adapter_path: e.target.value,
+                      })}
+                    placeholder="leave empty for base model"
+                    className={styles.pathInput}
+                  />
+                </div>
+                <small>
+                  Empty = Base Model only.
                 </small>
               </div>
               <div className={styles.modalActions}>
@@ -356,7 +423,7 @@ export default function OraclePage() {
                 className={styles.deleteButton}
                 title="Delete from session"
               >
-                ×
+                <Trash2 size={18} />
               </button>
             </div>
             <div className={styles.cardAnswer}>
@@ -379,7 +446,7 @@ export default function OraclePage() {
         onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
         title="Back to inquiry"
       >
-        ↑
+        <ArrowUp size={24} />
       </button>
     </main>
   );

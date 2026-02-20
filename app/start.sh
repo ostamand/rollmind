@@ -3,7 +3,7 @@
 # Get the absolute path to the app directory
 APP_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-echo "🔮 Initializing RollMind Oracle..."
+echo "🔮 Initializing RollMind..."
 
 # 1. Start the Backend API in the background
 echo "🚀 Launching Backend API (FastAPI)..."
@@ -20,7 +20,7 @@ WEB_PID=$!
 # Function to handle script termination (Ctrl+C)
 cleanup() {
     echo ""
-    echo "🛑 Stopping RollMind Oracle..."
+    echo "🛑 Stopping RollMind..."
     kill $API_PID
     kill $WEB_PID
     wait $API_PID 2>/dev/null

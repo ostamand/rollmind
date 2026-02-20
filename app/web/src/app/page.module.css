@@ -89,11 +89,27 @@
 
 .modalTitle {
   color: var(--accent);
-  margin-bottom: 2rem;
+  margin-bottom: 0;
   font-size: 1.5rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  text-align: center;
+  text-align: left;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.closeModalButton {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.closeModalButton:hover {
+  opacity: 1;
 }
 
 .configForm {

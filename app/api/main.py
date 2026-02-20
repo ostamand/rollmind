@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from model import manager
 import asyncio
 
-app = FastAPI(title="RollMind Oracle API")
+app = FastAPI(title="RollMind API")
 
 # Enable CORS for Next.js
 app.add_middleware(
@@ -24,6 +24,7 @@ class ConsultationRequest(BaseModel):
 class ConfigUpdate(BaseModel):
     model_id: Optional[str] = None
     adapter_path: Optional[str] = None
+    adapter_base_dir: Optional[str] = None
 
 @app.get("/health")
 async def health():
@@ -32,14 +33,16 @@ async def health():
         "model_loaded": manager.model is not None,
         "is_loading": manager.is_loading,
         "model_id": manager.model_id,
-        "adapter_path": manager.adapter_path
+        "adapter_path": manager.adapter_path,
+        "adapter_base_dir": manager.adapter_base_dir
     }
 
 @app.get("/config")
 async def get_config():
     return {
         "model_id": manager.model_id,
-        "adapter_path": manager.adapter_path
+        "adapter_path": manager.adapter_path,
+        "adapter_base_dir": manager.adapter_base_dir
     }
 
 @app.post("/config")
@@ -47,7 +50,8 @@ async def update_config(config: ConfigUpdate):
     await manager.update_config(model_id=config.model_id, adapter_path=config.adapter_path)
     return {"message": "Configuration updated", "config": {
         "model_id": manager.model_id,
-        "adapter_path": manager.adapter_path
+        "adapter_path": manager.adapter_path,
+        "adapter_base_dir": manager.adapter_base_dir
     }}
 
 @app.post("/consult")

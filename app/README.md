@@ -1,6 +1,6 @@
-# RollMind Oracle Web Application
+# RollMind Web Application
 
-This directory contains the full-stack implementation of the RollMind Oracle, a sleek web interface for interacting with the fine-tuned Gemma 7B D&D model.
+This directory contains the full-stack implementation of RollMind, a sleek web interface for interacting with the fine-tuned Gemma 7B D&D model.
 
 ## Architecture
 - **Backend (`app/api/`):** FastAPI server handling model loading, VRAM management, and streaming inference.

@@ -59,6 +59,60 @@ SCENARIOS = [
         "persona": "A party at the end of an adventuring day.",
         "description": "Focus on Short Rests, Long Rests, Hit Dice usage, and what resources reset (e.g., Spell Slots, class features).",
         "files": ["data/player-handbook-2024/1_player-handbook-2024-chapter1.md"]
+    },
+    {
+        "name": "The Attack Roll & Damage",
+        "persona": "A player about to make their first attack in a session.",
+        "description": "Focus on the math of the Attack Roll (d20 + modifier + proficiency), Critical Hits (natural 20), and how Damage is calculated (die + modifier). Mention damage types, Resistance, and Vulnerability.",
+        "files": ["data/player-handbook-2024/1_player-handbook-2024-chapter1.md", "data/player-handbook-2024/6_player-handbook-2024-chapter6.md"]
+    },
+    {
+        "name": "Defending & Saving Throws",
+        "persona": "A player whose character is being targeted by an attack or a spell.",
+        "description": "Focus on Armor Class (AC), the benefit of Shields, and the different types of Saving Throws to resist effects. Mention the Dodge action.",
+        "files": ["data/player-handbook-2024/1_player-handbook-2024-chapter1.md", "data/player-handbook-2024/2_player-handbook-2024-chapter2.md"]
+    },
+    {
+        "name": "Special Combat Maneuvers",
+        "persona": "A tactical player looking for options beyond just standard attacks.",
+        "description": "Focus on Grappling, Shoving, Opportunity Attacks, and the Disengage and Dash actions. Mention the Help action in combat.",
+        "files": ["data/player-handbook-2024/1_player-handbook-2024-chapter1.md"]
+    },
+    {
+        "name": "Casting Spells in Combat",
+        "persona": "A spellcaster in the heat of battle.",
+        "description": "Focus on the Magic action, Spell Attack Rolls, Area of Effect (AoE) shapes, and Concentration rules when taking damage.",
+        "files": ["data/player-handbook-2024/7_player-handbook-2024-chapter7.md", "data/player-handbook-2024/1_player-handbook-2024-chapter1.md"]
+    },
+    {
+        "name": "Weapon Mastery",
+        "persona": "A martial character (Fighter, Barbarian, etc.) optimizing their weapon choice.",
+        "description": "Focus on the new Mastery properties like Cleave, Topple, Nick, and Vex. Explain how many masteries a character can have and how to use them during an Attack action.",
+        "files": ["data/player-handbook-2024/6_player-handbook-2024-chapter6.md"]
+    },
+    {
+        "name": "Stealth & Hidden",
+        "persona": "A Rogue or Ranger attempting to remain unseen.",
+        "description": "Focus on the new Hidden condition rules. Explain the Hide action, the required Stealth check DC, and how being Hidden grants Advantage on attacks and makes you harder to target.",
+        "files": ["data/player-handbook-2024/1_player-handbook-2024-chapter1.md"]
+    },
+    {
+        "name": "Crafting & Tools",
+        "persona": "A character wanting to use their downtime to create items.",
+        "description": "Focus on the new 2024 Crafting rules, including gold costs and time requirements. Mention the benefit of having both Tool and Skill proficiency (which now grants Advantage on the check).",
+        "files": ["data/player-handbook-2024/6_player-handbook-2024-chapter6.md"]
+    },
+    {
+        "name": "Magic Items & Attunement",
+        "persona": "A character who just found a powerful magic item.",
+        "description": "Focus on how to Identify items using the Study action and the rules for Attunement (limit of 3 items, requirements for a Short Rest to attune).",
+        "files": ["data/player-handbook-2024/6_player-handbook-2024-chapter6.md"]
+    },
+    {
+        "name": "Class Features & Level Reference",
+        "persona": "A player checking their character's current capabilities at a specific level.",
+        "description": "Focus on summarizing what a specific class (e.g., Fighter, Rogue, Wizard) has at a specific level. Mention core features (e.g., Sneak Attack, Action Surge, Spellcasting), saving throw proficiencies, weapon/armor training, and spell slot totals.",
+        "files": ["data/player-handbook-2024/3_player-handbook-2024-chapter3.md"]
     }
 ]
 
@@ -103,12 +157,15 @@ RELEVANT RULES & TEXT:
 def main():
     parser = argparse.ArgumentParser(description="Generate Scenario-based Q&A pairs")
     parser.add_argument("--output_dir", type=str, default="data/step2/scenarios", help="Output directory for individual scenario files")
-    parser.add_argument("--project", type=str, required=True, help="GCP Project ID")
-    parser.add_argument("--location", type=str, default="us-central1", help="GCP Region")
+    parser.add_argument("--project", type=str, default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
+    parser.add_argument("--location", type=str, default=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
     parser.add_argument("--total_per_scenario", type=int, default=50, help="Total pairs per scenario")
     parser.add_argument("--batch_size", type=int, default=10, help="Pairs per API call")
     parser.add_argument("--scenario", type=str, default=None, help="Optional: Name of a specific scenario to run")
     args = parser.parse_args()
+
+    if not args.project:
+        parser.error("The --project argument or GOOGLE_CLOUD_PROJECT environment variable is required.")
 
     vertexai.init(project=args.project, location=args.location)
     model = GenerativeModel("gemini-3-flash-preview")
