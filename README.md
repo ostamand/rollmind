@@ -101,5 +101,12 @@ python3 inference.py \
 - `eval/`: Evaluation scripts for measuring performance.
 - `out/`: Trained model adapters, metrics, and checkpoints.
 
+
+## 8. Current Best
+
+```bash
+python3 inference.py --prompt "What weapons can a Fighter use" --adapter_path ./out/step2/test2_r64/checkpoint-200
+```
+
 ## References
 - [Gemma Prompt Structure Documentation](https://ai.google.dev/gemma/docs/core/prompt-structure)

@@ -48,6 +48,9 @@ TEXT SECTION:
         
         return json.loads(content)
     except Exception as e:
+        # Check for quota error
+        if "429" in str(e) or "Resource exhausted" in str(e):
+            raise e
         print(f"Error generating QA: {e}")
         return []
 
@@ -109,19 +112,28 @@ def main():
         for idx, chunk in enumerate(tqdm(all_chunks)):
             if idx <= last_processed_idx:
                 continue
-                
-            qa_pairs = generate_qa_pairs(chunk, model)
-            for qa in qa_pairs:
-                # Format for SFT training: Official Gemma Instruction format
-                entry = {
-                    "chunk_idx": idx,
-                    "text": f"<start_of_turn>user\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
-                }
-                f_raw.write(json.dumps(entry) + "\n")
             
-            f_raw.flush()
-            # Rate limiting safety
-            time.sleep(1) 
+            try:
+                qa_pairs = generate_qa_pairs(chunk, model)
+                if not qa_pairs:
+                    print(f"\nNo QA pairs generated for chunk {idx}. Stopping to avoid skipping any data.")
+                    return
+
+                for qa in qa_pairs:
+                    # Format for SFT training: Official Gemma Instruction format
+                    entry = {
+                        "chunk_idx": idx,
+                        "text": f"<start_of_turn>user\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
+                    }
+                    f_raw.write(json.dumps(entry) + "\n")
+                
+                f_raw.flush()
+                # Rate limiting safety
+                time.sleep(1) 
+            except Exception as e:
+                print(f"\nStopping due to error at chunk {idx}: {e}")
+                print("Please resume the script later; progress has been saved.")
+                return
 
     # 3. Read all, Shuffle and Split
     print("Finalizing dataset (shuffling and splitting)...")

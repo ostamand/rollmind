@@ -1,0 +1,20 @@
+{
+    "model_id": "google/gemma-2b-it",
+    "adapter_path": "./out/step1/test1_r64/checkpoint-150",
+    "train_path": "data/step2/temp_train_qa.jsonl",
+    "val_path": "data/step2/temp_val_qa.jsonl",
+    "output_dir": "./out/step2/test1_r64",
+    "learning_rate": 5e-5,
+    "num_train_epochs": 2.0,
+    "eval_steps": 50,
+    "save_steps": 50,
+    "warmup_steps": 30,
+    "weight_decay": 0.05,
+    "lr_scheduler_type": "cosine",
+    "lora_r": 64,
+    "lora_alpha": 128,
+    "lora_dropout": 0.1,
+    "max_seq_length": 1024,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 8
+}

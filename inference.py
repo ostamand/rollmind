@@ -43,9 +43,11 @@ def main():
     )
 
     # 4. Optionally Load LoRA Adapter
+    is_peft = False
     if args.adapter_path:
         print(f"Loading LoRA adapter from: {args.adapter_path}...")
         model = PeftModel.from_pretrained(model, args.adapter_path)
+        is_peft = True
     
     model.eval()
 
@@ -54,38 +56,53 @@ def main():
     if not args.no_template:
         full_prompt = f"<start_of_turn>user\n{args.prompt}<end_of_turn>\n<start_of_turn>model\n"
 
-    # 6. Tokenize and Generate
-    inputs = tokenizer(full_prompt, return_tensors="pt").to(model.device)
-    
-    print("\nGenerating...")
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=args.max_new_tokens,
-            temperature=args.temperature,
-            top_p=args.top_p,
-            top_k=args.top_k,
-            do_sample=True if args.temperature > 0 else False,
-            pad_token_id=tokenizer.eos_token_id
-        )
+    def generate(model_to_use, prompt_text):
+        inputs = tokenizer(prompt_text, return_tensors="pt").to(model_to_use.device)
+        with torch.no_grad():
+            outputs = model_to_use.generate(
+                **inputs,
+                max_new_tokens=args.max_new_tokens,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                top_k=args.top_k,
+                do_sample=True if args.temperature > 0 else False,
+                pad_token_id=tokenizer.eos_token_id
+            )
+        
+        response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        if not args.no_template:
+            if "model\n" in response:
+                response = response.split("model\n")[-1].strip()
+            elif "Assistant: " in response:
+                response = response.split("Assistant: ")[-1].strip()
+        return response
 
-    # 7. Decode and Print
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
-    if not args.no_template:
-        # Extract response after the prompt
-        # Skip tokens might remove <start_of_turn> but let's be safe
-        if "model\n" in response:
-            response = response.split("model\n")[-1].strip()
-        elif "Assistant: " in response: # Fallback for old models
-            response = response.split("Assistant: ")[-1].strip()
-    
-    print("\n" + "="*30)
-    print("PROMPT:", args.prompt)
-    print("-" * 30)
-    print("RESPONSE:")
-    print(response)
-    print("="*30 + "\n")
+    if is_peft:
+        print("\nGenerating Base Model response...")
+        with model.disable_adapter():
+            base_response = generate(model, full_prompt)
+        
+        print("Generating LoRA Model response...")
+        lora_response = generate(model, full_prompt)
+
+        print("\n" + "="*50)
+        print("PROMPT:", args.prompt)
+        print("-" * 50)
+        print("BASE MODEL RESPONSE:")
+        print(base_response)
+        print("-" * 50)
+        print("LORA MODEL RESPONSE:")
+        print(lora_response)
+        print("="*50 + "\n")
+    else:
+        print("\nGenerating...")
+        response = generate(model, full_prompt)
+        print("\n" + "="*50)
+        print("PROMPT:", args.prompt)
+        print("-" * 50)
+        print("RESPONSE:")
+        print(response)
+        print("="*50 + "\n")
 
 if __name__ == "__main__":
     main()

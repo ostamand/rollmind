@@ -55,6 +55,16 @@ def main():
     if "adapter_path" in cfg and cfg["adapter_path"]:
         print(f"Loading Step 1 adapters from {cfg['adapter_path']}...")
         model = PeftModel.from_pretrained(base_model, cfg["adapter_path"], is_trainable=True)
+        
+        # Apply overrides from config if present
+        if "lora_dropout" in cfg:
+            print(f"Overriding LoRA dropout to {cfg['lora_dropout']}...")
+            for name, module in model.named_modules():
+                if "lora_dropout" in name or (hasattr(module, "dropout") and "lora" in name.lower()):
+                    if hasattr(module, "p"): # Standard dropout
+                        module.p = cfg["lora_dropout"]
+                    elif hasattr(module, "dropout_p"): # Some PEFT versions
+                        module.dropout_p = cfg["lora_dropout"]
     else:
         print("No adapter path provided. Initializing new LoRA...")
         model = base_model
@@ -62,45 +72,72 @@ def main():
             r=cfg.get("lora_r", 16),
             lora_alpha=cfg.get("lora_alpha", 32),
             target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.05,
+            lora_dropout=cfg.get("lora_dropout", 0.05),
             task_type="CAUSAL_LM"
         )
 
     # 4. Load Dataset
     print(f"Loading dataset from {cfg['train_path']}...")
-    train_dataset = load_dataset("json", data_files=cfg["train_path"], split="train")
-    eval_dataset = load_dataset("json", data_files=cfg["val_path"], split="train")
-    print(f"Datasets loaded: {len(train_dataset)} train, {len(eval_dataset)} validation.")
+    
+    def prepare_dataset(path):
+        dataset = load_dataset("json", data_files=path, split="train")
+        
+        def split_prompt_completion(example):
+            separator = "<start_of_turn>model\n"
+            if separator in example["text"]:
+                parts = example["text"].split(separator)
+                return {
+                    "prompt": parts[0] + separator,
+                    "completion": separator.join(parts[1:])
+                }
+            return {"prompt": example["text"], "completion": ""}
+            
+        return dataset.map(split_prompt_completion, remove_columns=["text"])
+
+    train_dataset = prepare_dataset(cfg["train_path"])
+    eval_dataset = prepare_dataset(cfg["val_path"])
+    print(f"Datasets loaded and split: {len(train_dataset)} train, {len(eval_dataset)} validation.")
 
     # 5. SFT Configuration
     eval_steps = cfg.get("eval_steps", 50)
+    
+    # Decide between max_steps and num_train_epochs
+    max_steps = cfg.get("max_steps", -1)
+    num_train_epochs = cfg.get("num_train_epochs", 3.0)
+    
+    if max_steps > 0:
+        training_steps_args = {"max_steps": max_steps}
+    else:
+        training_steps_args = {"num_train_epochs": num_train_epochs}
+
     sft_config = SFTConfig(
         output_dir=cfg["output_dir"],
         learning_rate=cfg.get("learning_rate", 5e-5),
-        max_steps=cfg.get("max_steps", 300),
-        per_device_train_batch_size=1,
-        per_device_eval_batch_size=1,
-        gradient_accumulation_steps=8,
+        per_device_train_batch_size=cfg.get("per_device_train_batch_size", 1),
+        per_device_eval_batch_size=cfg.get("per_device_train_batch_size", 1),
+        gradient_accumulation_steps=cfg.get("gradient_accumulation_steps", 8),
         bf16=use_bf16,
         fp16=not use_bf16,
         logging_steps=10,
         eval_strategy="steps",
         eval_steps=eval_steps,
         save_strategy="steps",
-        save_steps=cfg.get("save_steps", eval_steps), # Default to eval_steps to avoid ValueError
+        save_steps=cfg.get("save_steps", eval_steps),
         load_best_model_at_end=True,
         metric_for_best_model="loss",
-        optim="paged_adamw_32bit",
+        optim="paged_adamw_8bit",
         report_to="none",
-        dataset_text_field="text",
         max_length=cfg.get("max_seq_length", 1024),
-        # New flexible hyperparameters
         warmup_steps=cfg.get("warmup_steps", 0),
         weight_decay=cfg.get("weight_decay", 0.0),
         lr_scheduler_type=cfg.get("lr_scheduler_type", "linear"),
+        completion_only_loss=True,
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
         # Memory optimizations for evaluation
         prediction_loss_only=True,
-        eval_accumulation_steps=1
+        eval_accumulation_steps=1,
+        **training_steps_args
     )
 
     # 6. Initialize Trainer
