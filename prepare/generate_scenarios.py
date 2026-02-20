@@ -15,57 +15,70 @@ SCENARIOS = [
     {
         "name": "Leveling Up",
         "persona": "A D&D player whose character just leveled up.",
-        "description": "Focus on what changes on the character sheet, new abilities, and choices to be made at specific levels (e.g., Level 2, Level 3 subclasses, Level 4 feats).",
-        "files": [
-            "data/player-handbook-2024/2_player-handbook-2024-chapter2.md",
-            "data/player-handbook-2024/3_player-handbook-2024-chapter3.md"
-        ]
+        "description": "Focus on changes to the character sheet, new abilities, and choices at specific levels (Level 2, subclasses at Level 3, feats at Level 4).",
+        "files": ["data/player-handbook-2024/2_player-handbook-2024-chapter2.md", "data/player-handbook-2024/3_player-handbook-2024-chapter3.md"]
     },
     {
         "name": "Character Creation",
         "persona": "A new player creating their first character.",
-        "description": "Focus on the step-by-step process, combining class, background, and species. Ask about ability scores, starting equipment, and origin traits.",
-        "files": [
-            "data/player-handbook-2024/2_player-handbook-2024-chapter2.md",
-            "data/player-handbook-2024/4_player-handbook-2024-chapter4.md"
-        ]
+        "description": "Focus on the step-by-step process: combining class, background, and species. Ask about ability scores and starting equipment.",
+        "files": ["data/player-handbook-2024/2_player-handbook-2024-chapter2.md", "data/player-handbook-2024/4_player-handbook-2024-chapter4.md"]
     },
     {
         "name": "Combat & Action Economy",
         "persona": "A player in the middle of a complex combat encounter.",
-        "description": "Focus on what can be done on a turn: Actions, Bonus Actions, Reactions, and Movement. Ask about specific class features like Cunning Action or Action Surge in the context of a turn.",
-        "files": [
-            "data/player-handbook-2024/1_player-handbook-2024-chapter1.md",
-            "data/player-handbook-2024/3_player-handbook-2024-chapter3.md"
-        ]
+        "description": "Focus on Actions, Bonus Actions, Reactions, and Movement. Ask about specific features like Cunning Action or Action Surge.",
+        "files": ["data/player-handbook-2024/1_player-handbook-2024-chapter1.md", "data/player-handbook-2024/3_player-handbook-2024-chapter3.md"]
+    },
+    {
+        "name": "Conditions & Tactical Combat",
+        "persona": "A player dealing with status effects and tactical positioning.",
+        "description": "Focus on conditions (Prone, Grappled, Restrained), Cover rules, and Death Saving Throws. Ask about how to end conditions.",
+        "files": ["data/player-handbook-2024/1_player-handbook-2024-chapter1.md"]
     },
     {
         "name": "Multiclassing",
         "persona": "An experienced player looking to multiclass.",
-        "description": "Focus on prerequisites, what proficiencies are gained/lost, and how spellcasting slots work when combining classes.",
-        "files": [
-            "data/player-handbook-2024/2_player-handbook-2024-chapter2.md",
-            "data/player-handbook-2024/3_player-handbook-2024-chapter3.md"
-        ]
+        "description": "Focus on prerequisites, proficiencies gained/lost, and spellcasting slot math when combining classes.",
+        "files": ["data/player-handbook-2024/2_player-handbook-2024-chapter2.md", "data/player-handbook-2024/3_player-handbook-2024-chapter3.md"]
+    },
+    {
+        "name": "Preparing & Managing Spells",
+        "persona": "A spellcaster managing their daily list.",
+        "description": "Focus on preparing spells, ritual rules, and how spell slots are consumed. Ask about the 'Prepared' vs 'Known' distinction.",
+        "files": ["data/player-handbook-2024/7_player-handbook-2024-chapter7.md"]
+    },
+    {
+        "name": "Social Interaction & Skills",
+        "persona": "A player in a non-combat roleplay scenario.",
+        "description": "Focus on Skill Checks (Persuasion, Insight, Deception), the Influence action, and how Ability Checks work in social contexts.",
+        "files": ["data/player-handbook-2024/1_player-handbook-2024-chapter1.md"]
+    },
+    {
+        "name": "Resting & Recovery",
+        "persona": "A party at the end of an adventuring day.",
+        "description": "Focus on Short Rests, Long Rests, Hit Dice usage, and what resources reset (e.g., Spell Slots, class features).",
+        "files": ["data/player-handbook-2024/1_player-handbook-2024-chapter1.md"]
     }
 ]
 
-def generate_scenario_qa(scenario, context_text, model, num_pairs=15):
+def generate_scenario_qa(scenario, context_text, model, num_pairs=10, iteration=1):
     prompt = f"""
-You are an expert D&D 5e (2024) assistant helping a player.
+You are an expert D&D 5e (2024) content creator helping a player.
 PLAYER PERSONA: {scenario['persona']}
 SCENARIO DESCRIPTION: {scenario['description']}
+BATCH: {iteration}
 
 --- INSTRUCTIONS ---
-1. Generate EXACTLY {num_pairs} diverse QA pairs that this specific player would ask in this scenario.
-2. The questions should feel natural and "high-level" (e.g., "I just hit level 2, what do I add to my sheet?" rather than "What does the level 2 table say?").
-3. ANSWERS MUST BE CONCISE, authoritative, and include specific mechanics from the provided text.
-4. Use **bolding** for game mechanics, keywords, and ability scores.
+1. Generate EXACTLY {num_pairs} diverse and unique QA pairs.
+2. Focus on specific mechanics, edge cases, or sub-topics relevant to this batch.
+3. ANSWERS MUST BE CONCISE and based ONLY on the provided text.
+4. Use **bolding** for mechanics and ability scores.
 5. NO META-TALK: Jump directly into the answer.
-6. DO NOT use outside knowledge; base answers ONLY on the provided text.
-7. Use the official Gemma template format for the final output.
+6. REFUSAL: If the provided text does not contain the answer, do not make it up. Omit that specific question.
+7. DO NOT use knowledge from previous editions (2014); use ONLY the 2024 text below.
 
-Format the output as a valid JSON list of objects:
+Format as a valid JSON list of objects:
 [
   {{"question": "...", "answer": "..."}},
   ...
@@ -75,7 +88,6 @@ RELEVANT RULES & TEXT:
 {context_text}
 """
     try:
-        # Use a higher token limit for long context
         response = model.generate_content(prompt)
         content = response.text.strip()
         if content.startswith("```json"):
@@ -85,67 +97,77 @@ RELEVANT RULES & TEXT:
         
         return json.loads(content)
     except Exception as e:
-        print(f"Error generating Scenario QA for {scenario['name']}: {e}")
+        print(f"Error in Scenario {scenario['name']} Batch {iteration}: {e}")
         return []
 
-def read_file_content(file_path):
-    # Simplified read for the script
-    with open(file_path, 'r', encoding='utf-8') as f:
-        return f.read()
-
 def main():
-    parser = argparse.ArgumentParser(description="Generate Scenario-based Q&A pairs using Vertex AI")
-    parser.add_argument("--output_file", type=str, default="data/step2/scenario_qa.jsonl", help="Output JSONL file")
-    parser.add_argument("--project", type=str, default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="Google Cloud Project ID")
-    parser.add_argument("--location", type=str, default=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"), help="Google Cloud Region")
-    parser.add_argument("--pairs_per_scenario", type=int, default=20, help="Number of QA pairs per scenario")
+    parser = argparse.ArgumentParser(description="Generate Scenario-based Q&A pairs")
+    parser.add_argument("--output_dir", type=str, default="data/step2/scenarios", help="Output directory for individual scenario files")
+    parser.add_argument("--project", type=str, required=True, help="GCP Project ID")
+    parser.add_argument("--location", type=str, default="us-central1", help="GCP Region")
+    parser.add_argument("--total_per_scenario", type=int, default=50, help="Total pairs per scenario")
+    parser.add_argument("--batch_size", type=int, default=10, help="Pairs per API call")
+    parser.add_argument("--scenario", type=str, default=None, help="Optional: Name of a specific scenario to run")
     args = parser.parse_args()
 
-    if not args.project:
-        parser.error("The --project argument or GOOGLE_CLOUD_PROJECT environment variable is required.")
-
     vertexai.init(project=args.project, location=args.location)
-    # Using gemini-1.5-flash for larger context window and better reasoning
-    model = GenerativeModel("gemini-1.5-flash")
+    model = GenerativeModel("gemini-3-flash-preview")
 
-    print(f"Generating Scenario-based Q&A for {len(SCENARIOS)} scenarios...")
-    
-    with open(args.output_file, 'w', encoding='utf-8') as f_out:
-        for scenario in SCENARIOS:
-            print(f"Processing Scenario: {scenario['name']}...")
-            
-            # Combine text from all relevant files
-            context_text = ""
-            for file_path in scenario['files']:
-                if os.path.exists(file_path):
-                    context_text += f"
+    os.makedirs(args.output_dir, exist_ok=True)
 
---- DOCUMENT: {os.path.basename(file_path)} ---
-"
-                    context_text += read_file_content(file_path)
-            
-            # Limit context if it's too huge, though gemini-1.5-flash should handle it.
-            # For this prototype, we'll take the first 100k characters if exceeded.
-            if len(context_text) > 100000:
-                context_text = context_text[:100000] + "... [TRUNCATED]"
+    target_scenarios = SCENARIOS
+    if args.scenario:
+        target_scenarios = [s for s in SCENARIOS if s["name"].lower() == args.scenario.lower()]
+        if not target_scenarios:
+            print(f"Error: Scenario '{args.scenario}' not found in the SCENARIOS list.")
+            return
 
-            qa_pairs = generate_scenario_qa(scenario, context_text, model, num_pairs=args.pairs_per_scenario)
-            
-            for qa in qa_pairs:
-                entry = {
-                    "scenario": scenario['name'],
-                    "text": f"<start_of_turn>user
-{qa['question']}<end_of_turn>
-<start_of_turn>model
-{qa['answer']}<end_of_turn>"
-                }
-                f_out.write(json.dumps(entry) + "
-")
-            
-            print(f"Generated {len(qa_pairs)} pairs for {scenario['name']}.")
-            time.sleep(2) # Rate limiting
+    for scenario in target_scenarios:
+        print(f"\n>>> Scenario: {scenario['name']}")
+        
+        # Scenario-specific file path
+        safe_name = scenario['name'].replace(" ", "_").replace("&", "and")
+        scenario_file = os.path.join(args.output_dir, f"{safe_name}.jsonl")
+        
+        # Resume Logic: Check which batches exist in this specific file
+        completed_batches = set()
+        if os.path.exists(scenario_file):
+            with open(scenario_file, 'r') as f:
+                for line in f:
+                    try:
+                        data = json.loads(line)
+                        completed_batches.add(data.get("batch_idx"))
+                    except: continue
 
-    print(f"Done! Saved scenario Q&A to {args.output_file}")
+        context_text = ""
+        for file_path in scenario['files']:
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f: context_text += f"\n{f.read()}"
+        
+        if len(context_text) > 150000: context_text = context_text[:150000]
+
+        num_batches = (args.total_per_scenario + args.batch_size - 1) // args.batch_size
+        
+        with open(scenario_file, 'a', encoding='utf-8') as f_out:
+            for i in range(num_batches):
+                if i in completed_batches:
+                    continue # Skip already completed batches for this file
+                
+                print(f"  Batch {i+1}/{num_batches}...")
+                qa_pairs = generate_scenario_qa(scenario, context_text, model, args.batch_size, i)
+                
+                for qa in qa_pairs:
+                    entry = {
+                        "scenario": scenario['name'],
+                        "batch_idx": i,
+                        "text": f"<start_of_turn>user\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
+                    }
+                    f_out.write(json.dumps(entry) + "\n")
+                
+                f_out.flush()
+                time.sleep(2)
+
+    print(f"\nFinished! Files are located in {args.output_dir}")
 
 if __name__ == "__main__":
     main()

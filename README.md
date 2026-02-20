@@ -20,6 +20,20 @@ huggingface-cli login
 gcloud auth application-default login
 ```
 
+### Sync Data from GCS
+If you are training on a remote VM (e.g., Lambda Labs, RunPod, or local server), you can download your pre-prepared data from a private GCS bucket.
+
+**1. Authentication for External VMs:**
+- Go to the [GCP Console](https://console.cloud.google.com/iam-admin/serviceaccounts).
+- Create a Service Account (or use an existing one) with the `Storage Object Viewer` role.
+- Generate a **JSON Key**, download it, and upload it to your VM (e.g., as `key.json`).
+
+**2. Run the Sync Script:**
+```bash
+# Using an explicit service account key (Required for non-GCP VMs)
+python3 download_data.py --bucket your-bucket-name --prefix data/ --out ./data --creds key.json
+```
+
 ## 2. Step 1: Data Preparation
 
 Process raw markdown files into semantic chunks. This script produces `train_chunks.jsonl`, `val_chunks.jsonl`, and `full_chunks.jsonl` (the entire corpus).
@@ -30,15 +44,32 @@ python3 prepare/prepare_step1_data.py
 
 ## 3. Step 2: Q&A Generation (Instruction Data)
 
-Generate synthetic Question-Answer pairs from all training chunks using Vertex AI Gemini. **We run this before training** so the Q&A pairs can be used to validate the model's behavior during the learning process.
+We use two methods to generate high-quality synthetic Question-Answer pairs from the D&D manual. This data is used in Step 4 to teach the model how to respond to users.
+
+### Method A: General QA Generation
+Generates a broad set of Q&A pairs from every chunk of the manual.
+```bash
+python3 prepare/generate_qa.py --project your-project-id
+```
+**Output:** `data/step2/train_qa.jsonl`
+
+### Method B: Scenario-Based Generation (Recommended)
+Generates targeted, high-level Q&A pairs based on specific player personas (e.g., Leveling Up, Combat, Social Skills). This creates more natural conversational data.
+
+**Features:**
+- **Modular:** Each scenario is saved to its own file in `data/step2/scenarios/`.
+- **Resumable:** Automatically skips already-generated batches.
+- **Targeted:** You can run a single scenario to expand its coverage.
 
 ```bash
-# Set env vars or use --project/--location
-python3 prepare/generate_qa.py
-```
-**Output:** `data/step2/train_qa.jsonl` and `data/step2/val_qa.jsonl`.
+# Generate all scenarios (50 pairs each)
+python3 prepare/generate_scenarios.py --project your-project-id
 
-**Note on Resuming:** The script automatically tracks progress in `data/step2/raw_qa.jsonl`. If the process is interrupted, simply run the command again to resume from the last completed chunk.
+# Generate a specific scenario only
+python3 prepare/generate_scenarios.py --project your-project-id --scenario "Multiclassing" --total_per_scenario 100
+```
+
+**Note on Resuming:** Both scripts track progress. If interrupted, simply run them again to pick up where you left off.
 
 ## 4. Step 3: Continued Pre-training (Domain Adaptation)
 
@@ -105,7 +136,7 @@ python3 inference.py \
 ## 8. Current Best
 
 ```bash
-python3 inference.py --prompt "What weapons can a Fighter use" --adapter_path ./out/step2/test2_r64/checkpoint-200
+python3 inference.py --prompt "What weapons can a Fighter use" --adapter_path ./out/step2/test1_7b_r64/checkpoint-250 --model_id 'google/gemma-7b-it'
 ```
 
 ## References

@@ -3,10 +3,14 @@ import json
 import argparse
 import os
 import shutil
+import gc
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
 from datasets import load_dataset
 from trl import SFTTrainer, SFTConfig
+
+# Enable memory-efficient fragmentation handling
+os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:64"
 
 def main():
     parser = argparse.ArgumentParser(description="Instruction Fine-tune Gemma")
@@ -16,9 +20,8 @@ def main():
     with open(args.config, 'r') as f:
         cfg = json.load(f)
 
-    # Check for BF16 support
-    use_bf16 = torch.cuda.is_bf16_supported()
-    compute_dtype = torch.bfloat16 if use_bf16 else torch.float16
+    # Use bfloat16 for RTX 4070 stability
+    compute_dtype = torch.bfloat16
     print(f"Using compute_dtype: {compute_dtype}")
 
     # 1. Fixed Quantization
@@ -26,7 +29,8 @@ def main():
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=compute_dtype,
-        bnb_4bit_use_double_quant=True
+        bnb_4bit_use_double_quant=True,
+        llm_int8_enable_fp32_cpu_offload=True
     )
 
     # 2. Load Model & Tokenizer
@@ -34,10 +38,19 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(cfg["model_id"])
     tokenizer.pad_token = tokenizer.eos_token
 
+    # Gemma 7B has a huge 256k vocabulary (~3GB in BF16).
+    # We use device_map="auto" with max_memory to force offloading 
+    # of embeddings and enough layers to leave room for training.
+    max_memory = {0: "7.5GiB", "cpu": "32GiB"}
+
     base_model = AutoModelForCausalLM.from_pretrained(
         cfg["model_id"],
         quantization_config=bnb_config,
-        device_map="auto"
+        device_map="auto",
+        max_memory=max_memory,
+        torch_dtype=compute_dtype,
+        low_cpu_mem_usage=True,
+        attn_implementation="sdpa"
     )
     
     # Safely print device info
@@ -58,20 +71,33 @@ def main():
         
         # Apply overrides from config if present
         if "lora_dropout" in cfg:
-            print(f"Overriding LoRA dropout to {cfg['lora_dropout']}...")
+            new_dropout = cfg["lora_dropout"]
+            print(f"Overriding LoRA dropout to {new_dropout}...")
+            # Update the config object itself
+            if hasattr(model, "peft_config"):
+                for adapter_name in model.peft_config:
+                    model.peft_config[adapter_name].lora_dropout = new_dropout
+            
+            # Also update modules directly to be safe
             for name, module in model.named_modules():
                 if "lora_dropout" in name or (hasattr(module, "dropout") and "lora" in name.lower()):
                     if hasattr(module, "p"): # Standard dropout
-                        module.p = cfg["lora_dropout"]
+                        module.p = new_dropout
                     elif hasattr(module, "dropout_p"): # Some PEFT versions
-                        module.dropout_p = cfg["lora_dropout"]
+                        module.dropout_p = new_dropout
     else:
         print("No adapter path provided. Initializing new LoRA...")
         model = base_model
+        
+        # Flexible target modules to allow memory saving
+        default_targets = ["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"]
+        target_modules = cfg.get("target_modules", default_targets)
+        print(f"Using LoRA target modules: {target_modules}")
+
         lora_config = LoraConfig(
             r=cfg.get("lora_r", 16),
             lora_alpha=cfg.get("lora_alpha", 32),
-            target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
+            target_modules=target_modules,
             lora_dropout=cfg.get("lora_dropout", 0.05),
             task_type="CAUSAL_LM"
         )
@@ -116,8 +142,8 @@ def main():
         per_device_train_batch_size=cfg.get("per_device_train_batch_size", 1),
         per_device_eval_batch_size=cfg.get("per_device_train_batch_size", 1),
         gradient_accumulation_steps=cfg.get("gradient_accumulation_steps", 8),
-        bf16=use_bf16,
-        fp16=not use_bf16,
+        bf16=True,
+        fp16=False,
         logging_steps=10,
         eval_strategy="steps",
         eval_steps=eval_steps,
@@ -125,7 +151,7 @@ def main():
         save_steps=cfg.get("save_steps", eval_steps),
         load_best_model_at_end=True,
         metric_for_best_model="loss",
-        optim="paged_adamw_8bit",
+        optim="adamw_8bit", # Switched from paged_adamw_8bit for stability
         report_to="none",
         max_length=cfg.get("max_seq_length", 1024),
         warmup_steps=cfg.get("warmup_steps", 0),
@@ -134,7 +160,7 @@ def main():
         completion_only_loss=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
-        # Memory optimizations for evaluation
+        # Memory optimizations
         prediction_loss_only=True,
         eval_accumulation_steps=1,
         **training_steps_args
@@ -149,6 +175,10 @@ def main():
         args=sft_config,
         processing_class=tokenizer
     )
+
+    # Clear cache before training
+    torch.cuda.empty_cache()
+    gc.collect()
 
     # 8. Train
     print("Starting Step 2 training (Instruction Tuning)...")

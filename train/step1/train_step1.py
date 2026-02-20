@@ -3,10 +3,14 @@ import json
 import argparse
 import os
 import shutil
+import gc
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import LoraConfig, prepare_model_for_kbit_training
 from datasets import load_dataset
 from trl import SFTTrainer, SFTConfig
+
+# Enable memory-efficient fragmentation handling
+os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:64"
 
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune Gemma with pre-split datasets")
@@ -16,9 +20,8 @@ def main():
     with open(args.config, 'r') as f:
         cfg = json.load(f)
 
-    # Check for BF16 support
-    use_bf16 = torch.cuda.is_bf16_supported()
-    compute_dtype = torch.bfloat16 if use_bf16 else torch.float16
+    # Use bfloat16 for RTX 4070
+    compute_dtype = torch.bfloat16
     print(f"Using compute_dtype: {compute_dtype}")
 
     # 1. BitsAndBytes Config
@@ -26,7 +29,8 @@ def main():
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=compute_dtype,
-        bnb_4bit_use_double_quant=True
+        bnb_4bit_use_double_quant=True,
+        llm_int8_enable_fp32_cpu_offload=True
     )
 
     # 2. Load Model & Tokenizer
@@ -34,26 +38,42 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(cfg["model_id"])
     tokenizer.pad_token = tokenizer.eos_token
 
+    # Gemma 7B has a huge 256k vocabulary (~3GB in FP16/BF16).
+    # We manually offload embed_tokens and lm_head to CPU.
+    # We'll use device_map="auto" but provide a strict max_memory to force it.
+    max_memory = {0: "7.5GiB", "cpu": "32GiB"}
+
     model = AutoModelForCausalLM.from_pretrained(
         cfg["model_id"],
         quantization_config=bnb_config,
-        device_map="auto"
+        device_map="auto",
+        max_memory=max_memory,
+        torch_dtype=compute_dtype,
+        low_cpu_mem_usage=True,
+        attn_implementation="sdpa"
     )
     
     device_map = getattr(model, "hf_device_map", None)
     if device_map:
         print(f"Model device map: {device_map}")
-    else:
-        print(f"Model loaded on: {model.device}")
         
     model = prepare_model_for_kbit_training(model)
 
     # 3. LoRA Configuration
+    default_targets = ["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"]
+    target_modules = cfg.get("target_modules", default_targets)
+    lora_r = cfg.get("lora_r", 8)
+    lora_alpha = cfg.get("lora_alpha", 16)
+    lora_dropout = cfg.get("lora_dropout", 0.05)
+    
+    print(f"LoRA Configuration: r={lora_r}, alpha={lora_alpha}, dropout={lora_dropout}")
+    print(f"LoRA Target Modules: {target_modules}")
+
     lora_config = LoraConfig(
-        r=cfg.get("lora_r", 16),
-        lora_alpha=cfg.get("lora_alpha", 32),
-        target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
-        lora_dropout=cfg.get("lora_dropout", 0.05),
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        target_modules=target_modules,
+        lora_dropout=lora_dropout,
         task_type="CAUSAL_LM"
     )
 
@@ -79,27 +99,27 @@ def main():
         learning_rate=cfg.get("learning_rate", 2e-4),
         per_device_train_batch_size=cfg.get("per_device_train_batch_size", 1),
         per_device_eval_batch_size=cfg.get("per_device_train_batch_size", 1),
-        gradient_accumulation_steps=cfg.get("gradient_accumulation_steps", 8),
-        bf16=use_bf16,
-        fp16=not use_bf16,
-        logging_steps=10,
+        gradient_accumulation_steps=cfg.get("gradient_accumulation_steps", 8), 
+        bf16=True,
+        fp16=False,
+        logging_steps=5,
         eval_strategy="steps",
         eval_steps=eval_steps,
         save_strategy="steps",
-        save_steps=cfg.get("save_steps", eval_steps), # Default to eval_steps to avoid ValueError
+        save_steps=cfg.get("save_steps", eval_steps),
         load_best_model_at_end=True,
         metric_for_best_model="loss",
-        optim="paged_adamw_8bit",
+        optim="adamw_8bit",
         report_to="none",
         dataset_text_field="text",
-        max_length=cfg.get("max_seq_length", 1024),
-        # New flexible hyperparameters
-        warmup_steps=cfg.get("warmup_steps", 0),
-        weight_decay=cfg.get("weight_decay", 0.0),
-        lr_scheduler_type=cfg.get("lr_scheduler_type", "linear"),
+        max_length=cfg.get("max_seq_length", 128),
+        packing=True, # Ensure 100% coverage by packing samples
+        warmup_steps=cfg.get("warmup_steps", 10),
+        weight_decay=cfg.get("weight_decay", 0.01),
+        lr_scheduler_type=cfg.get("lr_scheduler_type", "cosine"),
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
-        # Memory optimizations for evaluation
+        # Memory optimizations
         prediction_loss_only=True,
         eval_accumulation_steps=1,
         **training_steps_args
@@ -114,6 +134,10 @@ def main():
         args=sft_config,
         processing_class=tokenizer
     )
+
+    # Clear cache before training
+    torch.cuda.empty_cache()
+    gc.collect()
 
     # 7. Train
     print("Starting training...")
