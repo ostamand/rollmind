@@ -69,7 +69,7 @@ def deploy_model(project, location, bucket_name, model_display_name, model_path)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Upload and Deploy model to Vertex AI")
     parser.add_argument("--project", type=str, default=os.getenv("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
-    parser.add_argument("--location", type=str, default=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
+    parser.add_argument("--location", type=str, default=os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4"), help="GCP Region")
     parser.add_argument("--bucket", type=str, required=True, help="GCS Bucket name (without gs://)")
     parser.add_argument("--local_model_dir", type=str, default="./merged_model", help="Local directory with merged weights")
     parser.add_argument("--name", type=str, default="rollmind-gemma-7b", help="Display name for the model")

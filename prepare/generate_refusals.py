@@ -104,14 +104,13 @@ def main():
     parser = argparse.ArgumentParser(description="Generate Out-of-Domain Refusal Dataset")
     parser.add_argument("--output_file", type=str, default="data/step2/refusals/refusals.jsonl", help="Output JSONL file")
     parser.add_argument("--project", type=str, default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
-    parser.add_argument("--location", type=str, default=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
     parser.add_argument("--total_pairs", type=int, default=150, help="Total refusal pairs to generate")
     args = parser.parse_args()
 
     if not args.project:
         parser.error("The --project argument or GOOGLE_CLOUD_PROJECT environment variable is required.")
 
-    vertexai.init(project=args.project, location=args.location)
+    vertexai.init(project=args.project, location="global")
     model = GenerativeModel("gemini-3-flash-preview")
 
     os.makedirs(os.path.dirname(args.output_file), exist_ok=True)

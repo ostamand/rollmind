@@ -23,7 +23,7 @@ OFFLOAD_TIMEOUT = int(os.getenv("OFFLOAD_TIMEOUT_MINUTES", "10")) * 60
 
 # Vertex Config
 GCP_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
-GCP_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+GCP_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4")
 VERTEX_ENDPOINT_ID = os.getenv("VERTEX_ENDPOINT_ID")
 
 class BaseManager:
@@ -203,6 +203,10 @@ class VertexModelManager(BaseManager):
             self.endpoint_id = endpoint_id
 
     async def stream_generate(self, prompt: str):
+        if not self.endpoint_id:
+            yield "\n[RollMind API is online, but no Vertex AI Endpoint ID has been configured yet. Please update the configuration or set the VERTEX_ENDPOINT_ID environment variable.]"
+            return
+
         endpoint = aiplatform.Endpoint(
             endpoint_name=f"projects/{self.project}/locations/{self.location}/endpoints/{self.endpoint_id}"
         )
@@ -246,7 +250,8 @@ class VertexModelManager(BaseManager):
     def get_config(self):
         return {
             "mode": "vertex",
-            "endpoint_id": self.endpoint_id,
+            "endpoint_id": self.endpoint_id or "MISSING",
+            "status": "ready" if self.endpoint_id else "awaiting_config",
             "project": self.project,
             "location": self.location
         }

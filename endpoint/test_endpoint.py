@@ -9,7 +9,7 @@ def predict_custom_trained_model_sample(
     project: str,
     endpoint_id: str,
     prompt: str,
-    location: str = "us-central1",
+    location: str = "us-east4",
 ):
     aiplatform.init(project=project, location=location)
 
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--endpoint_id", type=str, required=True, help="Alphanumeric Endpoint ID")
     parser.add_argument("--prompt", type=str, default="What are the core traits of a Fighter?", help="Prompt to send")
     parser.add_argument("--project", type=str, default=os.getenv("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
-    parser.add_argument("--location", type=str, default=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
+    parser.add_argument("--location", type=str, default=os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4"), help="GCP Region")
 
     args = parser.parse_args()
     predict_custom_trained_model_sample(args.project, args.endpoint_id, args.prompt, args.location)

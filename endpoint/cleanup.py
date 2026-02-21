@@ -24,7 +24,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cleanup Vertex AI Endpoint")
     parser.add_argument("--endpoint_id", type=str, required=True, help="Alphanumeric Endpoint ID")
     parser.add_argument("--project", type=str, default=os.getenv("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
-    parser.add_argument("--location", type=str, default=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
+    parser.add_argument("--location", type=str, default=os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4"), help="GCP Region")
 
     args = parser.parse_args()
     cleanup_endpoint(args.project, args.location, args.endpoint_id)

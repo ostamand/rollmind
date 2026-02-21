@@ -71,4 +71,4 @@ python3 endpoint/cleanup.py --endpoint_id 1234567890
 ## Technical Details
 - **Container:** Uses the official Vertex Vision vLLM serving container.
 - **Hardware:** Deploys to `g2-standard-4` with 1x `NVIDIA_L4` GPU (24GB VRAM).
-- **Region:** Default is `us-central1`.
+- **Region:** Default is `us-east4`.

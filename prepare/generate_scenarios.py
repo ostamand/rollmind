@@ -162,7 +162,6 @@ def main():
     parser = argparse.ArgumentParser(description="Generate Scenario-based Q&A pairs")
     parser.add_argument("--output_dir", type=str, default="data/step2/scenarios", help="Output directory for individual scenario files")
     parser.add_argument("--project", type=str, default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
-    parser.add_argument("--location", type=str, default=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
     parser.add_argument("--total_per_scenario", type=int, default=50, help="Total pairs per scenario")
     parser.add_argument("--batch_size", type=int, default=10, help="Pairs per API call")
     parser.add_argument("--scenario", type=str, default=None, help="Optional: Name of a specific scenario to run")
@@ -171,7 +170,7 @@ def main():
     if not args.project:
         parser.error("The --project argument or GOOGLE_CLOUD_PROJECT environment variable is required.")
 
-    vertexai.init(project=args.project, location=args.location)
+    vertexai.init(project=args.project, location="global")
     model = GenerativeModel("gemini-3-flash-preview")
 
     os.makedirs(args.output_dir, exist_ok=True)
