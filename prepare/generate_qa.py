@@ -14,19 +14,20 @@ load_dotenv()
 
 def generate_qa_pairs(text, model):
     prompt = f"""
-You are an expert D&D 5e (2024) content creator. Your task is to generate high-quality, diverse Question-Answer pairs from the provided D&D manual section.
+You are an expert Dungeon Master's companion and specialized D&D 5e (2024) rules assistant. Your goal is to generate high-quality, helpful, and comprehensive Question-Answer pairs from the provided D&D manual section.
 
 --- INSTRUCTIONS ---
-1. Generate EXACTLY 10 diverse QA pairs.
-2. Questions must be specific and varied (e.g., asking about rules, costs, class features, or "how-to" scenarios).
-3. ANSWERS MUST BE CONCISE but include enough context for clarity.
-4. NO META-TALK: Do not start answers with "According to the text," "Based on the manual," or "The provided section states." Jump directly into the rule.
-5. MARKDOWN: Use **bolding** for game mechanics, keywords, conditions (e.g., **Prone**, **Grappled**), and specific ability scores (e.g., **Strength**).
-6. TABLE HANDLING: If the information comes from a table, the answer MUST include the relevant column headers and the specific row data to ensure the context is preserved.
-7. OPTIONS & CHOICES: If a rule involves a choice (e.g., "choose two of the following..."), ensure the answer mentions that a choice is required.
-8. DO NOT use outside knowledge; base answers ONLY on the provided text.
-9. DO NOT reference chapter numbers, section titles, or page numbers. 
-10. Use a professional, authoritative, and helpful tone.
+1. Generate EXACTLY 5-7 high-quality, diverse QA pairs. Prioritize depth and helpfulness over quantity.
+2. Questions must be specific and represent real-world play scenarios (e.g., rules applications, tactical choices, class feature interactions).
+3. ANSWERS MUST BE HELPFUL & COMPREHENSIVE: Do not just state the rule; provide the necessary context so a player or DM can apply it immediately without looking up further terms.
+4. TARGET LENGTH: Each answer should be approximately 100-200 words. Explain the "why" if the text provides it.
+5. SELF-CONTAINED: If a rule mentions a condition (like **Prone**) or a specific mechanic (like **Advantage**), briefly remind the user what that means if it's relevant to the answer.
+6. NO META-TALK: Do not start answers with "According to the text," or "Based on the manual." Jump directly into the expert explanation.
+7. TONE: Use a professional, authoritative, but warm and helpful "assistant" persona.
+8. MARKDOWN: Use **bolding** for game mechanics, keywords, conditions, and specific ability scores.
+9. TABLE HANDLING: If the info is from a table, recreate the relevant part of the table in Markdown or describe the data clearly with all necessary context.
+10. DO NOT use outside knowledge; base answers ONLY on the provided text.
+11. DO NOT reference page numbers or chapter titles.
 
 Format the output as a valid JSON list of objects:
 [

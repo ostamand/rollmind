@@ -210,6 +210,13 @@ def main():
     # Copy config for reference
     shutil.copy(args.config, os.path.join(cfg["output_dir"], "config.json"))
 
+    # Copy datasets for reference
+    print(f"Copying datasets to {cfg['output_dir']}...")
+    data_dir = os.path.join(cfg["output_dir"], "data")
+    os.makedirs(data_dir, exist_ok=True)
+    shutil.copy(cfg["train_path"], os.path.join(data_dir, os.path.basename(cfg["train_path"])))
+    shutil.copy(cfg["val_path"], os.path.join(data_dir, os.path.basename(cfg["val_path"])))
+
     print(f"Training and evaluation metrics saved to {cfg['output_dir']}.")
 
 if __name__ == "__main__":

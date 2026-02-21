@@ -25,34 +25,35 @@ class ConfigUpdate(BaseModel):
     model_id: Optional[str] = None
     adapter_path: Optional[str] = None
     adapter_base_dir: Optional[str] = None
+    endpoint_id: Optional[str] = None
 
 @app.get("/health")
 async def health():
-    return {
+    # Base health info
+    resp = {
         "status": "online",
-        "model_loaded": manager.model is not None,
+        "mode": manager.mode,
         "is_loading": manager.is_loading,
-        "model_id": manager.model_id,
-        "adapter_path": manager.adapter_path,
-        "adapter_base_dir": manager.adapter_base_dir
     }
+    # Add mode-specific health
+    if manager.mode == "local":
+        resp["model_loaded"] = manager.model is not None
+    
+    return resp
 
 @app.get("/config")
 async def get_config():
-    return {
-        "model_id": manager.model_id,
-        "adapter_path": manager.adapter_path,
-        "adapter_base_dir": manager.adapter_base_dir
-    }
+    return manager.get_config()
 
 @app.post("/config")
 async def update_config(config: ConfigUpdate):
-    await manager.update_config(model_id=config.model_id, adapter_path=config.adapter_path)
-    return {"message": "Configuration updated", "config": {
-        "model_id": manager.model_id,
-        "adapter_path": manager.adapter_path,
-        "adapter_base_dir": manager.adapter_base_dir
-    }}
+    await manager.update_config(
+        model_id=config.model_id, 
+        adapter_path=config.adapter_path,
+        adapter_base_dir=config.adapter_base_dir,
+        endpoint_id=config.endpoint_id
+    )
+    return {"message": "Configuration updated", "config": manager.get_config()}
 
 @app.post("/consult")
 async def consult(request: ConsultationRequest):

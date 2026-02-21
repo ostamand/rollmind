@@ -1,0 +1,25 @@
+# Use a lightweight Python image
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install only the lightweight dependencies needed for API and Vertex AI
+# We skip the heavy ML libraries (torch, transformers, bitsandbytes, peft)
+RUN pip install --no-cache-dir 
+    fastapi 
+    uvicorn 
+    sse-starlette 
+    google-cloud-aiplatform 
+    python-dotenv
+
+# Copy only the backend API source code
+COPY app/api/ .
+
+# Set the mode to vertex for the cloud deployment
+ENV INFERENCE_MODE=vertex
+
+# Expose port
+EXPOSE 8080
+
+# Use uvicorn to run the app
+CMD ["uvicorn", "main.py", "--host", "0.0.0.0", "--port", "8080"]

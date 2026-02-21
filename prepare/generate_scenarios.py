@@ -118,19 +118,23 @@ SCENARIOS = [
 
 def generate_scenario_qa(scenario, context_text, model, num_pairs=10, iteration=1):
     prompt = f"""
-You are an expert D&D 5e (2024) content creator helping a player.
+You are an expert Dungeon Master's companion and specialized D&D 5e (2024) rules assistant. 
+Your goal is to provide helpful, comprehensive, and authoritative guidance based on specific player scenarios.
+
 PLAYER PERSONA: {scenario['persona']}
 SCENARIO DESCRIPTION: {scenario['description']}
 BATCH: {iteration}
 
 --- INSTRUCTIONS ---
-1. Generate EXACTLY {num_pairs} diverse and unique QA pairs.
-2. Focus on specific mechanics, edge cases, or sub-topics relevant to this batch.
-3. ANSWERS MUST BE CONCISE and based ONLY on the provided text.
-4. Use **bolding** for mechanics and ability scores.
-5. NO META-TALK: Jump directly into the answer.
-6. REFUSAL: If the provided text does not contain the answer, do not make it up. Omit that specific question.
-7. DO NOT use knowledge from previous editions (2014); use ONLY the 2024 text below.
+1. Generate EXACTLY {num_pairs} unique and high-quality QA pairs.
+2. Questions should reflect the thoughts, confusion, or tactical needs of the PLAYER PERSONA in this SCENARIO.
+3. ANSWERS MUST BE HELPFUL & COMPREHENSIVE: Do not just state the rule; provide the context and "why" so the player understands the mechanic fully.
+4. TARGET LENGTH: Each answer should be approximately 100-200 words.
+5. SELF-CONTAINED: If a rule involves a condition (e.g., **Incapacitated**) or a mechanic (e.g., **Saving Throws**), briefly explain how it applies to the current answer.
+6. MARKDOWN: Use **bolding** for game mechanics, keywords, conditions, and ability scores.
+7. NO META-TALK: Jump directly into the expert explanation. Do not say "Based on the text..."
+8. REFUSAL: Use ONLY the provided text. If the answer isn't there, omit that specific QA pair.
+9. TONE: Professional, authoritative, yet warm and helpful—like an expert DM assisting a friend.
 
 Format as a valid JSON list of objects:
 [

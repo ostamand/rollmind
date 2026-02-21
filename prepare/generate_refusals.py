@@ -102,7 +102,7 @@ Format as a valid JSON list of objects:
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Out-of-Domain Refusal Dataset")
-    parser.add_argument("--output_file", type=str, default="data/step2/refusals.jsonl", help="Output JSONL file")
+    parser.add_argument("--output_file", type=str, default="data/step2/refusals/refusals.jsonl", help="Output JSONL file")
     parser.add_argument("--project", type=str, default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
     parser.add_argument("--location", type=str, default=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
     parser.add_argument("--total_pairs", type=int, default=150, help="Total refusal pairs to generate")

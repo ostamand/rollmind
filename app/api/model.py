@@ -1,41 +1,64 @@
 import os
-import torch
 import time
 import asyncio
 import threading
-from typing import Optional
-from transformers import (
-    AutoTokenizer, 
-    AutoModelForCausalLM, 
-    BitsAndBytesConfig,
-    TextIteratorStreamer
-)
-from peft import PeftModel
+from typing import Optional, List
+from google.cloud import aiplatform
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initial configuration from environment
+# Heavy ML imports are moved inside the LocalModelManager to allow 
+# the API to run in a lightweight CPU-only container for Vertex mode.
+
+# Configuration from environment
+INFERENCE_MODE = os.getenv("INFERENCE_MODE", "local").lower() # 'local' or 'vertex'
+
+# Local Config
 DEFAULT_MODEL_ID = os.getenv("MODEL_ID", "google/gemma-7b-it")
 DEFAULT_ADAPTER_PATH = os.getenv("ADAPTER_PATH")
 ADAPTER_BASE_DIR = os.getenv("ADAPTER_BASE_DIR", "../../out/step2/")
 MAX_GPU_MEMORY = os.getenv("MAX_GPU_MEMORY", "7.5GiB")
 OFFLOAD_TIMEOUT = int(os.getenv("OFFLOAD_TIMEOUT_MINUTES", "10")) * 60
 
-class ModelManager:
+# Vertex Config
+GCP_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
+GCP_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+VERTEX_ENDPOINT_ID = os.getenv("VERTEX_ENDPOINT_ID")
+
+class BaseManager:
     def __init__(self):
+        self.is_loading = False
+        self.mode = INFERENCE_MODE
+
+    async def stream_generate(self, prompt: str):
+        raise NotImplementedError()
+
+    async def update_config(self, **kwargs):
+        pass
+
+    def get_config(self):
+        return {"mode": self.mode}
+
+class LocalModelManager(BaseManager):
+    def __init__(self):
+        super().__init__()
+        # Import heavy libraries only when this manager is initialized
+        global torch, AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TextIteratorStreamer, PeftModel
+        import torch
+        from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TextIteratorStreamer
+        from peft import PeftModel
+        
         self.model = None
         self.tokenizer = None
         self.model_id = DEFAULT_MODEL_ID
         self.adapter_path = DEFAULT_ADAPTER_PATH
         self.adapter_base_dir = ADAPTER_BASE_DIR
         self.last_active = 0
-        self.is_loading = False
         self._lock = asyncio.Lock()
         self._offload_task = None
 
     async def update_config(self, model_id: Optional[str] = None, adapter_path: Optional[str] = None, adapter_base_dir: Optional[str] = None):
-        """Updates the configuration and triggers a reload if necessary."""
         async with self._lock:
             changed = False
             if model_id is not None and model_id != self.model_id:
@@ -43,8 +66,6 @@ class ModelManager:
                 changed = True
             if adapter_base_dir is not None and adapter_base_dir != self.adapter_base_dir:
                 self.adapter_base_dir = adapter_base_dir
-                # If base dir changes, we should re-evaluate the adapter path if it was relative
-                # but for now we'll just mark as changed to be safe.
                 changed = True
             if adapter_path is not None and adapter_path != self.adapter_path:
                 self.adapter_path = adapter_path
@@ -55,7 +76,6 @@ class ModelManager:
                 await self._offload()
 
     async def _offload(self):
-        """Internal helper to clear model from VRAM."""
         if self.model:
             del self.model
             del self.tokenizer
@@ -75,13 +95,11 @@ class ModelManager:
                     await asyncio.sleep(0.5)
                 return
 
-            print(f"Loading model {self.model_id}...")
-            if self.adapter_path:
-                print(f"Using adapter: {self.adapter_path}")
-                
+            print(f"Loading local model {self.model_id}...")
             self.is_loading = True
             try:
                 compute_dtype = torch.bfloat16
+                from transformers import BitsAndBytesConfig
                 bnb_config = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_quant_type="nf4",
@@ -93,7 +111,6 @@ class ModelManager:
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.tokenizer.pad_token = self.tokenizer.eos_token
 
-                # Use the same VRAM-saving map strategy as training
                 base_model = AutoModelForCausalLM.from_pretrained(
                     self.model_id,
                     quantization_config=bnb_config,
@@ -114,17 +131,14 @@ class ModelManager:
                 self.last_active = time.time()
                 print("Model loaded successfully.")
                 
-                # Start offload watchdog
                 if self._offload_task is None:
                     self._offload_task = asyncio.create_task(self._watchdog())
-
             finally:
                 self.is_loading = False
 
     async def _watchdog(self):
-        """Automatically offloads model if inactive."""
         while True:
-            await asyncio.sleep(60) # Check every minute
+            await asyncio.sleep(60)
             if self.model and (time.time() - self.last_active > OFFLOAD_TIMEOUT):
                 async with self._lock:
                     print("Inactivity timeout reached. Offloading model...")
@@ -135,12 +149,9 @@ class ModelManager:
             await self.load_model()
 
         self.last_active = time.time()
-        
-        # Prepare input
         inputs = self.tokenizer(prompt, return_tensors="pt").to(0)
         streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-        # Generation kwargs
         generation_kwargs = dict(
             inputs,
             streamer=streamer,
@@ -150,13 +161,100 @@ class ModelManager:
             top_p=0.9,
         )
 
-        # Run generation in a separate thread to not block the event loop
+        # Start generation in a background thread
         thread = threading.Thread(target=self.model.generate, kwargs=generation_kwargs)
         thread.start()
 
-        for new_text in streamer:
+        # Safely iterate the synchronous streamer without blocking the event loop
+        iterator = iter(streamer)
+        def get_next_token():
+            try:
+                return next(iterator)
+            except StopIteration:
+                return None
+
+        while True:
+            # Yield control back to the event loop while waiting for the next token
+            new_text = await asyncio.to_thread(get_next_token)
+            if new_text is None:
+                break
+                
             yield new_text
             self.last_active = time.time()
 
-# Singleton instance
-manager = ModelManager()
+    def get_config(self):
+        return {
+            "mode": "local",
+            "model_id": self.model_id,
+            "adapter_path": self.adapter_path,
+            "adapter_base_dir": self.adapter_base_dir
+        }
+
+class VertexModelManager(BaseManager):
+    def __init__(self):
+        super().__init__()
+        self.project = GCP_PROJECT
+        self.location = GCP_LOCATION
+        self.endpoint_id = VERTEX_ENDPOINT_ID
+        aiplatform.init(project=self.project, location=self.location)
+
+    async def update_config(self, endpoint_id: Optional[str] = None, **kwargs):
+        if endpoint_id:
+            self.endpoint_id = endpoint_id
+
+    async def stream_generate(self, prompt: str):
+        endpoint = aiplatform.Endpoint(
+            endpoint_name=f"projects/{self.project}/locations/{self.location}/endpoints/{self.endpoint_id}"
+        )
+        
+        # 1. Apply the Gemma chat template
+        formatted_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+        
+        instances = [{"prompt": formatted_prompt}]
+        parameters = {"max_tokens": 1024, "temperature": 0.7, "top_p": 0.9}
+        
+        try:
+            # 2. Prevent event loop blocking by offloading the initial connection to a thread
+            responses = await asyncio.to_thread(
+                endpoint.server_streaming_predict,
+                instances=instances, 
+                parameters=parameters
+            )
+            
+            # 3. Safely iterate through the blocking stream chunks 
+            # (Note: we use asyncio.to_thread for the 'next' calls under the hood to stay truly async)
+            def get_next_chunk(iterator):
+                try:
+                    return next(iterator)
+                except StopIteration:
+                    return None
+
+            iterator = iter(responses)
+            while True:
+                response = await asyncio.to_thread(get_next_chunk, iterator)
+                if response is None:
+                    break
+                    
+                if response.predictions:
+                    # pytorch-vllm-serve typically yields the text delta as the first prediction element
+                    yield response.predictions[0]
+                    
+        except Exception as e:
+            print(f"Vertex Streaming Error: {e}")
+            yield f"\n[Error connecting to Vertex AI: {str(e)}]"
+
+    def get_config(self):
+        return {
+            "mode": "vertex",
+            "endpoint_id": self.endpoint_id,
+            "project": self.project,
+            "location": self.location
+        }
+    
+# Singleton instance based on mode
+if INFERENCE_MODE == "vertex":
+    print("RollMind running in VERTEX mode.")
+    manager = VertexModelManager()
+else:
+    print("RollMind running in LOCAL mode.")
+    manager = LocalModelManager()

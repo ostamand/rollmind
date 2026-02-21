@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
-import { Trash2, Settings, ArrowUp, X, Send } from "lucide-react";
+import remarkGfm from "remark-gfm";
+import { ArrowUp, Send, Settings, Trash2, X } from "lucide-react";
 import styles from "./page.module.css";
 
 interface Entry {
@@ -29,27 +30,23 @@ export default function RollMindPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState(PROCESSING_MESSAGES[0]);
-  const [config, setConfig] = useState({ model_id: "", adapter_path: "", adapter_base_dir: "" });
+  const [processingMessage, setProcessingMessage] = useState(
+    PROCESSING_MESSAGES[0],
+  );
+  const [config, setConfig] = useState({
+    mode: "local",
+    model_id: "",
+    adapter_path: "",
+    adapter_base_dir: "",
+    endpoint_id: "",
+  });
   const [newConfig, setNewConfig] = useState({
     model_id: "",
     adapter_path: "",
     adapter_base_dir: "",
+    endpoint_id: "",
   });
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Rotate processing messages when loading
-  useEffect(() => {
-    if (!isLoading) return;
-    const interval = setInterval(() => {
-      setProcessingMessage(prev => {
-        const currentIndex = PROCESSING_MESSAGES.indexOf(prev);
-        const nextIndex = (currentIndex + 1) % PROCESSING_MESSAGES.length;
-        return PROCESSING_MESSAGES[nextIndex];
-      });
-    }, 2000 + Math.random() * 1000);
-    return () => clearInterval(interval);
-  }, [isLoading]);
 
   // Monitor scroll for Back to Top visibility
   useEffect(() => {
@@ -66,10 +63,7 @@ export default function RollMindPage() {
       .then((res) => res.json())
       .then((data) => {
         setConfig(data);
-        // Strip prefix if it exists to make it easier for the user
-        const cleanPath = data.adapter_path?.replace(data.adapter_base_dir, "") ||
-          "";
-        setNewConfig({ ...data, adapter_path: cleanPath });
+        setNewConfig(data);
       })
       .catch((err) => console.error("Failed to fetch config", err));
   }, []);
@@ -88,9 +82,7 @@ export default function RollMindPage() {
         .then((res) => res.json())
         .then((data) => {
           setConfig(data);
-          const cleanPath =
-            data.adapter_path?.replace(data.adapter_base_dir, "") || "";
-          setNewConfig({ ...data, adapter_path: cleanPath });
+          setNewConfig(data);
         })
         .catch((err) => console.error("Failed to fetch config", err));
     }
@@ -98,16 +90,17 @@ export default function RollMindPage() {
 
   const handleUpdateConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Prepend the adapter_base_dir path if a name is provided
-    const finalPath = newConfig.adapter_path.trim()
-      ? `${newConfig.adapter_base_dir}${newConfig.adapter_path.trim()}`
-      : "";
+    let finalPayload = { ...newConfig };
+
+    if (config.mode === "local") {
+      finalPayload.adapter_path = newConfig.adapter_path.trim();
+    }
 
     try {
       const response = await fetch("http://localhost:8000/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newConfig, adapter_path: finalPath }),
+        body: JSON.stringify(finalPayload),
       });
       if (response.ok) {
         const data = await response.json();
@@ -127,6 +120,63 @@ export default function RollMindPage() {
     if (window.confirm("Are you sure you want to clear this session?")) {
       setHistory([]);
     }
+  };
+
+  const preprocessMarkdown = (text: string) => {
+    // 1. Break tables/lists squashed into a single line
+    let processed = text
+      .replace(/\|\|/g, "|\n|")
+      .replace(/([^\s\n])-/g, "$1\n- ");
+
+    const lines = processed.split("\n");
+    const result: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim();
+      
+      // Filter out obvious "hallucination junk" from the model
+      if (line === "• -" || line === "• | :" || line === "• |" || line === "• ◦") {
+        continue;
+      }
+
+      const pipeCount = (line.match(/\|/g) || []).length;
+
+      if (pipeCount >= 2) {
+        // Handle single-row pseudo-tables (convert to list)
+        const isLastLine = i === lines.length - 1;
+        const nextLineExists = !isLastLine;
+        const nextLineIsSeparator = nextLineExists && lines[i + 1].includes("---");
+        const prevLineIsSeparator = i > 0 && lines[i - 1].includes("---");
+
+        if (line.startsWith("|") && line.endsWith("|") && !nextLineIsSeparator && !prevLineIsSeparator) {
+          const cells = line.split("|").filter(c => c.trim().length > 0);
+          
+          // Case: Missing separator row (Header exists, but no |---| follow-up)
+          // If this is the FIRST row of a table (no pipe above it), inject a separator
+          const prevLineHasPipes = i > 0 && (lines[i-1].match(/\|/g) || []).length >= 2;
+          if (!prevLineHasPipes && nextLineExists && (lines[i+1].match(/\|/g) || []).length >= 2) {
+             result.push(line);
+             result.push("|" + Array(pipeCount - 1).fill(" --- |").join(""));
+             continue;
+          }
+
+          // Case: Truly single row with Key: Value pairs -> Convert to list
+          if (cells.every(c => c.includes(":")) && !prevLineHasPipes) {
+            result.push("\n" + cells.map(c => `- **${c.trim()}**`).join("\n") + "\n");
+            continue;
+          }
+        }
+
+        // Ensure spacing before tables
+        if (i > 0 && result[result.length - 1]?.trim() !== "" && !result[result.length - 1]?.trim().startsWith("|")) {
+          result.push("");
+        }
+      }
+      
+      result.push(lines[i]);
+    }
+    
+    return result.join("\n");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -241,18 +291,20 @@ export default function RollMindPage() {
             >
               <Trash2 size={24} color="var(--accent)" />
             </button>
-            <button
-              className={styles.actionButton}
-              onClick={() => setIsConfigOpen(true)}
-              title="Configure Model"
-            >
-              <Settings size={24} color="var(--accent)" />
-            </button>
+            {process.env.NEXT_PUBLIC_HIDE_CONFIG !== "true" && (
+              <button
+                className={styles.actionButton}
+                onClick={() => setIsConfigOpen(true)}
+                title="Configure Model"
+              >
+                <Settings size={24} color="var(--accent)" />
+              </button>
+            )}
           </div>
         </div>
         <h1 className={styles.title}>RollMind</h1>
         <p className={styles.subtitle}>
-          D&D 2024 • {config.adapter_path ? "Fine-tuned" : "Base"}
+          D&D 2024
         </p>
       </header>
 
@@ -264,51 +316,74 @@ export default function RollMindPage() {
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <h2 className={styles.modalTitle}>Configuration</h2>
-              <button onClick={() => setIsConfigOpen(false)} className={styles.closeModalButton}>
+              <button
+                onClick={() => setIsConfigOpen(false)}
+                className={styles.closeModalButton}
+              >
                 <X size={24} color="var(--accent)" />
               </button>
             </div>
             <form onSubmit={handleUpdateConfig} className={styles.configForm}>
               <div className={styles.formGroup}>
-                <label>Base Model ID</label>
-                <input
-                  type="text"
-                  value={newConfig.model_id}
-                  onChange={(e) =>
-                    setNewConfig({ ...newConfig, model_id: e.target.value })}
-                  placeholder="google/gemma-7b-it"
-                />
-              </div>
-              <div className={styles.formGroup}>
-                <label>Adapter Base Directory</label>
-                <input
-                  type="text"
-                  value={newConfig.adapter_base_dir}
-                  onChange={(e) =>
-                    setNewConfig({ ...newConfig, adapter_base_dir: e.target.value })}
-                  placeholder="../../out/step2/"
-                />
-              </div>
-              <div className={styles.formGroup}>
-                <label>Adapter (LoRA)</label>
-                <div className={styles.pathInputWrapper}>
-                  <span className={styles.pathPrefix}>{newConfig.adapter_base_dir}</span>
-                  <input
-                    type="text"
-                    value={newConfig.adapter_path}
-                    onChange={(e) =>
-                      setNewConfig({
-                        ...newConfig,
-                        adapter_path: e.target.value,
-                      })}
-                    placeholder="leave empty for base model"
-                    className={styles.pathInput}
-                  />
+                <label>Inference Mode</label>
+                <div className={styles.modeBadge}>
+                  {config.mode.toUpperCase()}
                 </div>
                 <small>
-                  Empty = Base Model only.
+                  To change mode, update INFERENCE_MODE in .env and restart.
                 </small>
               </div>
+
+              {config.mode === "local"
+                ? (
+                  <>
+                    <div className={styles.formGroup}>
+                      <label>Base Model ID</label>
+                      <input
+                        type="text"
+                        value={newConfig.model_id}
+                        onChange={(e) =>
+                          setNewConfig({
+                            ...newConfig,
+                            model_id: e.target.value,
+                          })}
+                        placeholder="google/gemma-7b-it"
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Adapter (LoRA)</label>
+                      <input
+                        type="text"
+                        value={newConfig.adapter_path}
+                        onChange={(e) =>
+                          setNewConfig({
+                            ...newConfig,
+                            adapter_path: e.target.value,
+                          })}
+                        placeholder="leave empty for base model"
+                      />
+                    </div>
+                  </>
+                )
+                : (
+                  <div className={styles.formGroup}>
+                    <label>Vertex Endpoint ID</label>
+                    <input
+                      type="text"
+                      value={newConfig.endpoint_id}
+                      onChange={(e) =>
+                        setNewConfig({
+                          ...newConfig,
+                          endpoint_id: e.target.value,
+                        })}
+                      placeholder="Enter alphanumeric endpoint ID"
+                    />
+                    <small>
+                      Project: {config.project} | Location: {config.location}
+                    </small>
+                  </div>
+                )}
+
               <div className={styles.modalActions}>
                 <button
                   type="button"
@@ -319,62 +394,6 @@ export default function RollMindPage() {
                 </button>
                 <button type="submit" className={styles.saveButton}>
                   Update
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-              <div className={styles.formGroup}>
-                <label>Base Model ID</label>
-                <input
-                  type="text"
-                  value={newConfig.model_id}
-                  onChange={(e) =>
-                    setNewConfig({ ...newConfig, model_id: e.target.value })}
-                  placeholder="google/gemma-7b-it"
-                />
-              </div>
-              <div className={styles.formGroup}>
-                <label>Adapter Base Directory</label>
-                <input
-                  type="text"
-                  value={newConfig.adapter_base_dir}
-                  onChange={(e) =>
-                    setNewConfig({ ...newConfig, adapter_base_dir: e.target.value })}
-                  placeholder="../../out/step2/"
-                />
-              </div>
-              <div className={styles.formGroup}>
-                <label>Adapter (LoRA)</label>
-                <div className={styles.pathInputWrapper}>
-                  <span className={styles.pathPrefix}>{newConfig.adapter_base_dir}</span>
-                  <input
-                    type="text"
-                    value={newConfig.adapter_path}
-                    onChange={(e) =>
-                      setNewConfig({
-                        ...newConfig,
-                        adapter_path: e.target.value,
-                      })}
-                    placeholder="leave empty for base model"
-                    className={styles.pathInput}
-                  />
-                </div>
-                <small>
-                  Empty = Base Model only.
-                </small>
-              </div>
-              <div className={styles.modalActions}>
-                <button
-                  type="button"
-                  onClick={() => setIsConfigOpen(false)}
-                  className={styles.cancelButton}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className={styles.saveButton}>
-                  Update Oracle
                 </button>
               </div>
             </form>
@@ -427,16 +446,20 @@ export default function RollMindPage() {
               </button>
             </div>
             <div className={styles.cardAnswer}>
-              {entry.answer ? (
-                <ReactMarkdown>{entry.answer}</ReactMarkdown>
-              ) : (
-                <div className={styles.loadingText}>
-                  {processingMessage}
-                  <span className={styles.loadingDot}>.</span>
-                  <span className={styles.loadingDot}>.</span>
-                  <span className={styles.loadingDot}>.</span>
-                </div>
-              )}
+              {entry.answer
+                ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {preprocessMarkdown(entry.answer)}
+                  </ReactMarkdown>
+                )
+                : (
+                  <div className={styles.loadingText}>
+                    {processingMessage}
+                    <span className={styles.loadingDot}>.</span>
+                    <span className={styles.loadingDot}>.</span>
+                    <span className={styles.loadingDot}>.</span>
+                  </div>
+                )}
             </div>
           </section>
         ))}
