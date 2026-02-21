@@ -9,11 +9,15 @@ REPO_NAME="ostamand"
 # Artifact Registry format: REGION-docker.pkg.dev/PROJECT_ID/REPO_NAME/IMAGE_NAME
 IMAGE_NAME="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME"
 
-# Check for required Vertex Endpoint ID
+# Check for required Vertex Endpoint ID and Config Secret
 if [ -z "$VERTEX_ENDPOINT_ID" ]; then
     echo "⚠️  Warning: VERTEX_ENDPOINT_ID environment variable is not set."
-    echo "You can provide it now or set it later in the Cloud Run console."
     read -p "Enter Vertex Endpoint ID (optional): " VERTEX_ENDPOINT_ID
+fi
+
+if [ -z "$CONFIG_SECRET_KEY" ]; then
+    echo "🔐 CONFIG_SECRET_KEY is not set. This key will protect your /config endpoints."
+    read -p "Enter a secret key for configuration (optional): " CONFIG_SECRET_KEY
 fi
 
 # Ensure the Artifact Registry repository exists
@@ -42,7 +46,9 @@ gcloud run deploy $SERVICE_NAME \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
-    --set-env-vars="INFERENCE_MODE=vertex,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=$REGION,VERTEX_ENDPOINT_ID=$VERTEX_ENDPOINT_ID"
+    --memory 2Gi \
+    --cpu 1 \
+    --set-env-vars="INFERENCE_MODE=vertex,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=$REGION,VERTEX_ENDPOINT_ID=$VERTEX_ENDPOINT_ID,CONFIG_SECRET_KEY=$CONFIG_SECRET_KEY"
 
 echo "✨ Deployment complete!"
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --platform managed --region $REGION --format='value(status.url)')

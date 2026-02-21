@@ -244,8 +244,11 @@ class VertexModelManager(BaseManager):
                     yield response.predictions[0]
                     
         except Exception as e:
-            print(f"Vertex Streaming Error: {e}")
-            yield f"\n[Error connecting to Vertex AI: {str(e)}]"
+            # Log the full error for the administrator
+            print(f"❌ Vertex AI Connection Error: {e}")
+            
+            # Yield a user-friendly message in the stream
+            yield "\n[The RollMind engine is currently offline. Please contact the administrator.]"
 
     def get_config(self):
         return {
