@@ -144,14 +144,17 @@ def main():
     else:
         training_steps_args = {"num_train_epochs": num_train_epochs}
 
-    # Auto-adjust batch size for 24GB mode if default is used
+    # Auto-adjust batch size for 24GB mode ONLY if not explicitly specified in config
     train_batch_size = cfg.get("per_device_train_batch_size", 1)
     grad_accum = cfg.get("gradient_accumulation_steps", 8)
     
-    if not args.low_mem and train_batch_size == 1:
+    # Only auto-optimize if the user didn't explicitly set a batch size in the config
+    if not args.low_mem and "per_device_train_batch_size" not in cfg:
         print("Optimizing throughput for 24GB: per_device_train_batch_size=4, gradient_accumulation_steps=grad_accum//4")
         train_batch_size = 4
         grad_accum = max(1, grad_accum // 4)
+    else:
+        print(f"Using configuration batch size: {train_batch_size} (accumulation: {grad_accum})")
 
     sft_config = SFTConfig(
         output_dir=cfg["output_dir"],
