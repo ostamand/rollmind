@@ -1,11 +1,12 @@
 import os
+import asyncio
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
 
-# ... (rest of the imports)
 from model import manager
-import asyncio
 
 app = FastAPI(title="RollMind API")
 
@@ -17,7 +18,6 @@ def verify_config_access(x_config_secret: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Invalid or missing X-Config-Secret header")
 
 # Enable CORS for Next.js
-# ... (rest of middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # In production, restrict this to your domain

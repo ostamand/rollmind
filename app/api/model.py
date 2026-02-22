@@ -211,10 +211,7 @@ class VertexModelManager(BaseManager):
             endpoint_name=f"projects/{self.project}/locations/{self.location}/endpoints/{self.endpoint_id}"
         )
         
-        # 1. Apply the Gemma chat template
-        formatted_prompt = f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
-        
-        instances = [{"prompt": formatted_prompt}]
+        instances = [{"prompt": prompt}]
         parameters = {"max_tokens": 1024, "temperature": 0.7, "top_p": 0.9}
         
         try:

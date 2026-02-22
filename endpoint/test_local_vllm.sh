@@ -1,11 +1,11 @@
 #!/bin/bash
 # endpoint/test_local_vllm.sh
 
-# 1. Configuration
-# Use absolute path to ensure Docker mount works
+# Configuration
 MODEL_DIR="$(pwd)/merged_model"
 PORT=8080
-IMAGE="us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:latest"
+# April 2024 image - newer than initial Gemma release, likely better tokenizer support
+IMAGE="us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:public-image-20240414_0916_RC00"
 
 echo "🚀 Starting local vLLM container..."
 echo "Model directory: $MODEL_DIR"
@@ -18,14 +18,17 @@ if [ ! -d "$MODEL_DIR" ]; then
 fi
 
 # Run the container
-# --gpus all: Required to use the GPU
-# -v $MODEL_DIR:/model: Mount the local merged model into the container
-# -p $PORT:8080: Map host port to container port
+# --ipc=host: Required for efficient shared memory
 docker run --gpus all -it --rm \
+    --ipc=host \
+    --ulimit memlock=-1 \
+    --ulimit stack=67108864 \
     -v "$MODEL_DIR":/model \
     -p $PORT:8080 \
+    -e PORT=8080 \
     --name rollmind-vllm-test \
     "$IMAGE" \
+    python3 -m vllm.entrypoints.api_server \
     --host=0.0.0.0 \
     --port=8080 \
     --model=/model \

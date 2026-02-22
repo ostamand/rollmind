@@ -1,5 +1,6 @@
 #!/bin/bash
 # cloud_run/deploy_vertex_proxy.sh
+set -e
 
 # Configuration (Defaults)
 PROJECT_ID=$(gcloud config get-value project)

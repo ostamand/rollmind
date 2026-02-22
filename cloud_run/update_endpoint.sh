@@ -1,5 +1,6 @@
 #!/bin/bash
 # cloud_run/update_endpoint.sh
+set -e
 
 # Configuration
 SERVICE_NAME="rollmind-api"
@@ -22,9 +23,9 @@ fi
 echo "🔄 Updating Cloud Run service environment variables..."
 # This will trigger a new revision of the service with the updated ID.
 # It is persistent and will be used by all new instances.
-gcloud run services update $SERVICE_NAME 
-    --platform managed 
-    --region $REGION 
+gcloud run services update $SERVICE_NAME \
+    --platform managed \
+    --region $REGION \
     --update-env-vars="VERTEX_ENDPOINT_ID=$NEW_ID"
 
 echo "✨ Successfully updated $SERVICE_NAME to use Vertex Endpoint: $NEW_ID"

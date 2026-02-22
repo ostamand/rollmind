@@ -12,22 +12,24 @@ from dotenv import load_dotenv
 # Load environment variables from .env file if it exists
 load_dotenv()
 
-def generate_qa_pairs(text, model):
+def generate_qa_pairs(text, model, max_retries=5):
+    import re
     prompt = f"""
-You are an expert Dungeon Master's companion and specialized D&D 5e (2024) rules assistant. Your goal is to generate high-quality, helpful, and comprehensive Question-Answer pairs from the provided D&D manual section.
+You are an expert Dungeon Master's companion and specialized D&D 5e (2024) rules assistant. Your goal is to generate high-quality, helpful Question-Answer pairs that a player would actually ask during a game session or while managing their character.
 
 --- INSTRUCTIONS ---
-1. Generate EXACTLY 5-7 high-quality, diverse QA pairs. Prioritize depth and helpfulness over quantity.
-2. Questions must be specific and represent real-world play scenarios (e.g., rules applications, tactical choices, class feature interactions).
-3. ANSWERS MUST BE HELPFUL & COMPREHENSIVE: Do not just state the rule; provide the necessary context so a player or DM can apply it immediately without looking up further terms.
-4. TARGET LENGTH: Each answer should be approximately 100-200 words. Explain the "why" if the text provides it.
-5. SELF-CONTAINED: If a rule mentions a condition (like **Prone**) or a specific mechanic (like **Advantage**), briefly remind the user what that means if it's relevant to the answer.
-6. NO META-TALK: Do not start answers with "According to the text," or "Based on the manual." Jump directly into the expert explanation.
-7. TONE: Use a professional, authoritative, but warm and helpful "assistant" persona.
-8. MARKDOWN: Use **bolding** for game mechanics, keywords, conditions, and specific ability scores.
-9. TABLE HANDLING: If the info is from a table, recreate the relevant part of the table in Markdown or describe the data clearly with all necessary context.
-10. DO NOT use outside knowledge; base answers ONLY on the provided text.
-11. DO NOT reference page numbers or chapter titles.
+1. Generate EXACTLY 5-7 QA pairs. 
+2. QUESTIONS (The "Player" side): Must be direct, practical, and representative of a player at the table or leveling a character. 
+   - NO BOOK-ISMS: Do not reference "Steps", "Tables", "Chapters", "Sections", "Pages", or "The Manual" in the question.
+   - CONCEPT-FOCUSED: Ask about the game mechanic or concept directly (e.g., instead of "How do I use the Step 3 table?", use "How do my ability scores affect my character's appearance?").
+   - Examples: "How do I calculate my AC with this armor?", "What roll do I make to grapple?", "What happens to my character if I'm Prone?", "What is the range of this spell?".
+3. ANSWERS (The "Assistant" side): MUST BE HELPFUL & COMPREHENSIVE. Provide the rule clearly, but also include the necessary context so the player understands *how* to use it immediately.
+4. TARGET LENGTH: Each answer should be approximately 80-150 words. Explain the "why" or "how" to provide full context.
+5. COMMON PITFALLS: If the rule or mechanic has a frequent point of confusion (e.g., Invisibility vs. Being Hidden, or how Concentration works with multiple spells), briefly clarify it in the answer. ONLY do this if there is a genuine, common mistake to address.
+6. NO META-TALK: Jump directly into the expert explanation. Avoid phrases like "According to the text provided" or "Based on the rules".
+7. TONE: Professional, authoritative, and helpful.
+8. MARKDOWN: Use **bolding** for game mechanics, keywords, conditions, and ability scores.
+9. SOURCE FIDELITY: Base all questions and answers ONLY on the provided TEXT SECTION. Do not use external knowledge or rules from previous D&D editions. If the text is insufficient to answer a generated question, discard that question.
 
 Format the output as a valid JSON list of objects:
 [
@@ -38,22 +40,47 @@ Format the output as a valid JSON list of objects:
 TEXT SECTION:
 {text}
 """
-    try:
-        response = model.generate_content(prompt)
-        # Extract JSON from response (handling potential markdown formatting)
-        content = response.text.strip()
-        if content.startswith("```json"):
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif content.startswith("```"):
-            content = content.split("```")[1].split("```")[0].strip()
-        
-        return json.loads(content)
-    except Exception as e:
-        # Check for quota error
-        if "429" in str(e) or "Resource exhausted" in str(e):
-            raise e
-        print(f"Error generating QA: {e}")
-        return []
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt)
+            content = response.text.strip()
+            
+            # More robust JSON extraction using regex to find the first [ and last ]
+            match = re.search(r"(\[.*\])", content, re.DOTALL)
+            if match:
+                json_str = match.group(1)
+                return json.loads(json_str)
+            
+            # Fallback to the old method if regex fails
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            return json.loads(content)
+            
+        except (json.JSONDecodeError, Exception) as e:
+            # Handle rate limits
+            if "429" in str(e) or "Resource exhausted" in str(e):
+                if attempt < max_retries - 1:
+                    # More aggressive backoff: 5, 20, 80, 320 seconds...
+                    wait_time = (5 * (4 ** attempt)) + random.random()
+                    print(f"\n⚠️ Rate limit hit. Retrying in {wait_time:.2f}s (Attempt {attempt + 1}/{max_retries})...")
+                    time.sleep(wait_time)
+                    continue
+            
+            # Handle JSON errors or other transient issues by retrying
+            if isinstance(e, json.JSONDecodeError):
+                if attempt < max_retries - 1:
+                    print(f"\n⚠️ JSON Parse Error. Retrying (Attempt {attempt + 1}/{max_retries})...")
+                    time.sleep(1)
+                    continue
+            
+            # If it's the last attempt or a different error
+            if attempt == max_retries - 1:
+                print(f"Error generating QA after {max_retries} attempts: {e}")
+                return []
+    return []
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Q&A pairs using Vertex AI Gemini")
@@ -129,8 +156,8 @@ def main():
                     f_raw.write(json.dumps(entry) + "\n")
                 
                 f_raw.flush()
-                # Rate limiting safety
-                time.sleep(1) 
+                # 2-second delay is usually enough for Gemini 1.5 Flash
+                time.sleep(2) 
             except Exception as e:
                 print(f"\nStopping due to error at chunk {idx}: {e}")
                 print("Please resume the script later; progress has been saved.")

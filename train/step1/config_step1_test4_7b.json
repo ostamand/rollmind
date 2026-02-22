@@ -1,0 +1,19 @@
+{
+    "model_id": "google/gemma-7b-it",
+    "train_path": "data/step1/full_chunks.jsonl",
+    "val_path": "data/step2/val_qa.jsonl",
+    "output_dir": "./out/step1/test4_7b_r64",
+    "learning_rate": 8e-5,
+    "num_train_epochs": 5.0,
+    "eval_steps": 50,
+    "save_steps": 50,
+    "warmup_steps": 40,
+    "weight_decay": 0.15,
+    "lr_scheduler_type": "cosine",
+    "lora_r": 64,
+    "lora_alpha": 128,
+    "lora_dropout": 0.05,
+    "max_seq_length": 512,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 8
+}

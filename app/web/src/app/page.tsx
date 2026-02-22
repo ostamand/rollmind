@@ -123,53 +123,29 @@ export default function RollMindPage() {
   };
 
   const preprocessMarkdown = (text: string) => {
-    // 1. Break tables/lists squashed into a single line
-    let processed = text
-      .replace(/\|\|/g, "|\n|")
-      .replace(/([^\s\n])-/g, "$1\n- ");
+    // 1. Only perform essential structural fixes. 
+    // We remove the aggressive dash-to-list regex which was breaking names like "St-Amand"
+    let processed = text.replace(/\|\|/g, "|\n|");
 
     const lines = processed.split("\n");
     const result: string[] = [];
 
     for (let i = 0; i < lines.length; i++) {
-      let line = lines[i].trim();
-      
-      // Filter out obvious "hallucination junk" from the model
-      if (line === "• -" || line === "• | :" || line === "• |" || line === "• ◦") {
-        continue;
-      }
-
+      const line = lines[i].trim();
       const pipeCount = (line.match(/\|/g) || []).length;
 
-      if (pipeCount >= 2) {
-        // Handle single-row pseudo-tables (convert to list)
+      // Handle cases where the model starts a table but forgets the separator row
+      if (pipeCount >= 2 && line.startsWith("|") && line.endsWith("|")) {
         const isLastLine = i === lines.length - 1;
         const nextLineExists = !isLastLine;
         const nextLineIsSeparator = nextLineExists && lines[i + 1].includes("---");
-        const prevLineIsSeparator = i > 0 && lines[i - 1].includes("---");
+        const prevLineHasPipes = i > 0 && (lines[i - 1].match(/\|/g) || []).length >= 2;
 
-        if (line.startsWith("|") && line.endsWith("|") && !nextLineIsSeparator && !prevLineIsSeparator) {
-          const cells = line.split("|").filter(c => c.trim().length > 0);
-          
-          // Case: Missing separator row (Header exists, but no |---| follow-up)
-          // If this is the FIRST row of a table (no pipe above it), inject a separator
-          const prevLineHasPipes = i > 0 && (lines[i-1].match(/\|/g) || []).length >= 2;
-          if (!prevLineHasPipes && nextLineExists && (lines[i+1].match(/\|/g) || []).length >= 2) {
-             result.push(line);
-             result.push("|" + Array(pipeCount - 1).fill(" --- |").join(""));
-             continue;
-          }
-
-          // Case: Truly single row with Key: Value pairs -> Convert to list
-          if (cells.every(c => c.includes(":")) && !prevLineHasPipes) {
-            result.push("\n" + cells.map(c => `- **${c.trim()}**`).join("\n") + "\n");
-            continue;
-          }
-        }
-
-        // Ensure spacing before tables
-        if (i > 0 && result[result.length - 1]?.trim() !== "" && !result[result.length - 1]?.trim().startsWith("|")) {
-          result.push("");
+        // If this is the header row but no separator follows, inject one
+        if (!prevLineHasPipes && nextLineExists && !nextLineIsSeparator) {
+          result.push(lines[i]);
+          result.push("|" + Array(pipeCount - 1).fill(" --- |").join(""));
+          continue;
         }
       }
       
