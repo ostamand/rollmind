@@ -1,0 +1,18 @@
+{
+    "model_id": "google/gemma-7b-it",
+    "adapter_path": "./out/step1/test4_7b_r64/checkpoint-325",
+    "train_path": "data/step2/train_qa.jsonl",
+    "val_path": "data/step2/val_qa.jsonl",
+    "output_dir": "./out/step2/test6_7b_constant",
+    "learning_rate": 2e-5,
+    "num_train_epochs": 1.2,
+    "eval_steps": 50,
+    "save_steps": 50,
+    "warmup_steps": 50,
+    "weight_decay": 0.20,
+    "lr_scheduler_type": "constant_with_warmup",
+    "lora_dropout": 0.10,
+    "max_seq_length": 512,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 8
+}
