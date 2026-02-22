@@ -19,8 +19,8 @@ This directory contains scripts for **Partial Fine-Tuning** on 24GB VRAM GPUs. U
 ### Step 1: Domain Adaptation (Rule Learning)
 Trains on the 100% rules corpus using the last 4 layers.
 ```bash
-python3 step1/train_partial_step1.py 
-    --config step1/config_partial_step1.json 
+python3 train/partial/step1/train_partial_step1.py \
+    --config train/partial/step1/config_partial_step1.json \
     --num-layers 4
 ```
 

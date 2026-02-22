@@ -113,13 +113,31 @@ def main():
     print("Starting Partial Fine-tuning (Step 1)...")
     train_result = trainer.train()
 
-    # 8. Save
+    # 8. Final Evaluation
+    print("Running final evaluation...")
+    eval_metrics = trainer.evaluate()
+
+    # 9. Save
     print(f"Saving model to {cfg['output_dir']}...")
     trainer.save_model(cfg["output_dir"])
     tokenizer.save_pretrained(cfg["output_dir"])
     
+    # Save all metrics
     trainer.save_metrics("train", train_result.metrics)
+    trainer.save_metrics("eval", eval_metrics)
+    trainer.save_state()
+
+    # Create all_results.json manually to ensure it's comprehensive
+    all_results = {**train_result.metrics, **eval_metrics}
+    with open(os.path.join(cfg["output_dir"], "all_results.json"), "w") as f:
+        json.dump(all_results, f, indent=4)
+    
+    # Save log history for easy plotting
+    with open(os.path.join(cfg["output_dir"], "metrics_history.json"), "w") as f:
+        json.dump(trainer.state.log_history, f, indent=4)
+
     shutil.copy(args.config, os.path.join(cfg["output_dir"], "config.json"))
+    print(f"Training and evaluation metrics saved to {cfg['output_dir']}.")
 
 if __name__ == "__main__":
     main()
