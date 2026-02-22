@@ -4,19 +4,22 @@ This project provides a simple, structured workflow for fine-tuning a Gemma mode
 
 ## 🚀 Fast VM Setup (24GB VRAM)
 
-For high-performance training on VMs with a 24GB GPU (e.g., A10G, L4, RTX 3090/4090), use the automated setup script:
+For high-performance training on VMs with a 24GB GPU, use the automated setup script. This script handles GitHub authentication, repository cloning, and dependency installation:
 
 ```bash
-# 1. Clone (if not already done)
-git clone <your-repo-url> rollmind && cd rollmind
-
-# 2. Run the automated setup (Installs everything, handles gcloud & HF auth)
+# 1. Download and run the setup script
+curl -fsSL -o setup_vm.sh https://raw.githubusercontent.com/<your-username>/rollmind/main/setup_vm.sh
 chmod +x setup_vm.sh
 ./setup_vm.sh
 
-# 3. Activate the environment
+# 2. Activate the environment
 source venv/bin/activate
 ```
+
+### Authentication Summary
+- **GitHub CLI (gh):** Required to clone and push to your private repository.
+- **Hugging Face:** Required to download gated Gemma weights.
+- **Google Cloud (gcloud):** Required to sync data from GCS and generate synthetic QA.
 
 ---
 

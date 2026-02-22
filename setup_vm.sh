@@ -3,10 +3,30 @@
 
 set -e
 
-echo "--- 1. Installing System Dependencies ---"
-sudo apt-get update && sudo apt-get install -y git git-lfs python3-pip python3-venv
+echo "--- 1. Installing System Dependencies & GitHub CLI ---"
+sudo apt-get update && sudo apt-get install -y git git-lfs python3-pip python3-venv curl
+# Install GitHub CLI
+if ! command -v gh &> /dev/null; then
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+    sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+    sudo apt update
+    sudo apt install gh -y
+fi
 
-echo "--- 2. Setting up Python Virtual Environment ---"
+echo "--- 2. GitHub Authentication & Clone ---"
+if ! gh auth status &> /dev/null; then
+    echo "Please login to GitHub to clone the private repository:"
+    gh auth login
+fi
+
+read -p "Enter the repository name (e.g., username/rollmind): " REPO_NAME
+if [ ! -d "rollmind" ] && [ ! -z "$REPO_NAME" ]; then
+    gh repo clone "$REPO_NAME" rollmind
+    cd rollmind
+fi
+
+echo "--- 3. Setting up Python Virtual Environment ---"
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
