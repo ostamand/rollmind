@@ -1,0 +1,16 @@
+{
+    "model_id": "google/gemma-7b-it",
+    "model_path": "./out/partial/7b_top4_step1",
+    "train_path": "data/step2/train_qa.jsonl",
+    "val_path": "data/step2/val_qa.jsonl",
+    "output_dir": "./out/partial/7b_top4_step2",
+    "learning_rate": 1e-5,
+    "num_train_epochs": 2.0,
+    "eval_steps": 50,
+    "save_steps": 50,
+    "warmup_steps": 20,
+    "weight_decay": 0.05,
+    "max_seq_length": 512,
+    "per_device_train_batch_size": 2,
+    "gradient_accumulation_steps": 4
+}

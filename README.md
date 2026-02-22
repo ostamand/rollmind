@@ -1,8 +1,26 @@
 # Gemma D&D Manual Fine-Tuning
 
-This project provides a simple, structured workflow for fine-tuning a Gemma model (2b or 7b) on a D&D Player's Handbook using a 12GB GPU. 
+This project provides a simple, structured workflow for fine-tuning a Gemma model (2b or 7b) on a D&D Player's Handbook.
 
-## 1. Setup
+## 🚀 Fast VM Setup (24GB VRAM)
+
+For high-performance training on VMs with a 24GB GPU (e.g., A10G, L4, RTX 3090/4090), use the automated setup script:
+
+```bash
+# 1. Clone (if not already done)
+git clone <your-repo-url> rollmind && cd rollmind
+
+# 2. Run the automated setup (Installs everything, handles gcloud & HF auth)
+chmod +x setup_vm.sh
+./setup_vm.sh
+
+# 3. Activate the environment
+source venv/bin/activate
+```
+
+---
+
+## 1. Setup (Manual)
 
 ### Install Dependencies
 ```bash
@@ -23,15 +41,9 @@ gcloud auth application-default login
 ### Sync Data from GCS
 If you are training on a remote VM (e.g., Lambda Labs, RunPod, or local server), you can download your pre-prepared data from a private GCS bucket.
 
-**1. Authentication for External VMs:**
-- Go to the [GCP Console](https://console.cloud.google.com/iam-admin/serviceaccounts).
-- Create a Service Account (or use an existing one) with the `Storage Object Viewer` role.
-- Generate a **JSON Key**, download it, and upload it to your VM (e.g., as `key.json`).
-
-**2. Run the Sync Script:**
 ```bash
-# Using an explicit service account key (Required for non-GCP VMs)
-python3 download_data.py --bucket your-bucket-name --prefix data/ --out ./data --creds key.json
+# Using Application Default Credentials (ADC)
+python3 download_data.py --bucket your-bucket-name --prefix data/ --out ./data
 ```
 
 ## 2. Step 1: Data Preparation
@@ -44,50 +56,48 @@ python3 prepare/prepare_step1_data.py
 
 ## 3. Step 2: Q&A Generation (Instruction Data)
 
-We use two methods to generate high-quality synthetic Question-Answer pairs from the D&D manual. This data is used in Step 4 to teach the model how to respond to users.
+We use two methods to generate high-quality synthetic Question-Answer pairs from the D&D manual.
 
 ### Method A: General QA Generation
 Generates a broad set of Q&A pairs from every chunk of the manual.
 ```bash
 python3 prepare/generate_qa.py --project your-project-id
 ```
-**Output:** `data/step2/train_qa.jsonl`
 
 ### Method B: Scenario-Based Generation (Recommended)
-Generates targeted, high-level Q&A pairs based on specific player personas (e.g., Leveling Up, Combat, Social Skills). This creates more natural conversational data.
-
-**Features:**
-- **Modular:** Each scenario is saved to its own file in `data/step2/scenarios/`.
-- **Resumable:** Automatically skips already-generated batches.
-- **Targeted:** You can run a single scenario to expand its coverage.
+Generates targeted, high-level Q&A pairs based on specific player personas (e.g., Leveling Up, Combat, Social Skills).
 
 ```bash
-# Generate all scenarios (50 pairs each)
 python3 prepare/generate_scenarios.py --project your-project-id
-
-# Generate a specific scenario only
-python3 prepare/generate_scenarios.py --project your-project-id --scenario "Multiclassing" --total_per_scenario 100
 ```
-
-**Note on Resuming:** Both scripts track progress. If interrupted, simply run them again to pick up where you left off.
 
 ## 4. Step 3: Continued Pre-training (Domain Adaptation)
 
-Train the model on the full text of the manual (`full_chunks.jsonl`) to ensure 100% rule coverage. We use the Q&A validation set to ensure the model doesn't "forget" how to be an assistant.
+Train the model on the full text of the manual (`full_chunks.jsonl`) to ensure 100% rule coverage.
 
+**For 24GB GPUs (High Throughput):**
 ```bash
-python3 train/step1/train_step1.py --config train/step1/config_step1.json
+python3 train/step1/train_step1.py --config train/step1/config_step1_7b_24gb.json
 ```
-**Output:** Trained LoRA adapters in `out/step1`.
+
+**For 12GB GPUs (Low Memory):**
+```bash
+python3 train/step1/train_step1.py --config train/step1/config_step1.json --low-mem
+```
 
 ## 5. Step 4: Instruction Fine-Tuning
 
-Fine-tune the domain-adapted model on the synthetic Q&A pairs to sharpen its assistant capabilities.
+Fine-tune the domain-adapted model on the synthetic Q&A pairs.
 
+**For 24GB GPUs (High Throughput):**
 ```bash
-python3 train/step2/train_step2.py --config train/step2/config_step2.json
+python3 train/step2/train_step2.py --config train/step2/config_step2_7b_24gb.json
 ```
-**Output:** Final LoRA adapters in `out/step2`.
+
+**For 12GB GPUs (Low Memory):**
+```bash
+python3 train/step2/train_step2.py --config train/step2/config_step2.json --low-mem
+```
 
 ## 6. Evaluation
 
@@ -96,15 +106,15 @@ Calculate the Average Loss and Perplexity of a model on the validation set.
 ### Baseline (Original Gemma)
 ```bash
 python3 eval/evaluate_model.py \
-    --model_id google/gemma-2b-it \
+    --model_id google/gemma-7b-it \
     --dataset_path data/step2/val_qa.jsonl
 ```
 
 ### Domain Adapted (After Step 2)
 ```bash
 python3 eval/evaluate_model.py \
-    --model_id google/gemma-2b-it \
-    --adapter_path ./out/step1/full_adaptation \
+    --model_id google/gemma-7b-it \
+    --adapter_path ./out/step2/test1_7b_r64 \
     --dataset_path data/step2/val_qa.jsonl
 ```
 
@@ -112,16 +122,11 @@ python3 eval/evaluate_model.py \
 
 Use the `inference.py` script to chat with your model.
 
-### Chat with Base Model
-```bash
-python3 inference.py --prompt "What are the core traits of a Fighter?"
-```
-
 ### Chat with Fine-Tuned Model (LoRA)
 ```bash
 python3 inference.py \
-    --model_id google/gemma-2b-it \
-    --adapter_path ./out/step2 \
+    --model_id google/gemma-7b-it \
+    --adapter_path ./out/step2/test1_7b_r64/checkpoint-250 \
     --prompt "What is the hit point roll dice for a priest"
 ```
 

@@ -15,6 +15,7 @@ os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:6
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune Gemma with pre-split datasets")
     parser.add_argument("--config", type=str, required=True, help="Path to the JSON config file")
+    parser.add_argument("--low-mem", action="store_true", help="Optimize for 12GB VRAM (CPU offloading)")
     args = parser.parse_args()
 
     with open(args.config, 'r') as f:
@@ -25,23 +26,30 @@ def main():
     print(f"Using compute_dtype: {compute_dtype}")
 
     # 1. BitsAndBytes Config
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=compute_dtype,
-        bnb_4bit_use_double_quant=True,
-        llm_int8_enable_fp32_cpu_offload=True
-    )
+    if args.low_mem:
+        print("Optimization: 12GB VRAM mode (CPU offloading enabled)")
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=compute_dtype,
+            bnb_4bit_use_double_quant=True,
+            llm_int8_enable_fp32_cpu_offload=True
+        )
+        max_memory = {0: "7.5GiB", "cpu": "32GiB"}
+    else:
+        print("Optimization: 24GB VRAM mode (High performance, no offloading)")
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=compute_dtype,
+            bnb_4bit_use_double_quant=True
+        )
+        max_memory = None
 
     # 2. Load Model & Tokenizer
     print(f"Loading {cfg['model_id']}...")
     tokenizer = AutoTokenizer.from_pretrained(cfg["model_id"])
     tokenizer.pad_token = tokenizer.eos_token
-
-    # Gemma 7B has a huge 256k vocabulary (~3GB in FP16/BF16).
-    # We manually offload embed_tokens and lm_head to CPU.
-    # We'll use device_map="auto" but provide a strict max_memory to force it.
-    max_memory = {0: "7.5GiB", "cpu": "32GiB"}
 
     model = AutoModelForCausalLM.from_pretrained(
         cfg["model_id"],
@@ -94,12 +102,21 @@ def main():
     else:
         training_steps_args = {"num_train_epochs": num_train_epochs}
 
+    # Auto-adjust batch size for 24GB mode if default is used
+    train_batch_size = cfg.get("per_device_train_batch_size", 1)
+    grad_accum = cfg.get("gradient_accumulation_steps", 8)
+    
+    if not args.low_mem and train_batch_size == 1:
+        print("Optimizing throughput for 24GB: per_device_train_batch_size=4, gradient_accumulation_steps=grad_accum//4")
+        train_batch_size = 4
+        grad_accum = max(1, grad_accum // 4)
+
     sft_config = SFTConfig(
         output_dir=cfg["output_dir"],
         learning_rate=cfg.get("learning_rate", 2e-4),
-        per_device_train_batch_size=cfg.get("per_device_train_batch_size", 1),
-        per_device_eval_batch_size=cfg.get("per_device_train_batch_size", 1),
-        gradient_accumulation_steps=cfg.get("gradient_accumulation_steps", 8), 
+        per_device_train_batch_size=train_batch_size,
+        per_device_eval_batch_size=train_batch_size,
+        gradient_accumulation_steps=grad_accum, 
         bf16=True,
         fp16=False,
         logging_steps=5,
