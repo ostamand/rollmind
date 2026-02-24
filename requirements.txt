@@ -5,6 +5,7 @@ bitsandbytes==0.49.2
 datasets
 trl==0.28.0
 google-cloud-aiplatform
+google-cloud-firestore
 python-dotenv
 
 torch

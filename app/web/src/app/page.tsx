@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp, Send, Settings, Trash2, X } from "lucide-react";
+import { ArrowUp, Copy, Send, Settings, Trash2, X, ThumbsUp, ThumbsDown } from "lucide-react";
 import styles from "./page.module.css";
 
 interface Entry {
@@ -12,6 +12,7 @@ interface Entry {
   question: string;
   answer: string;
   isStreaming: boolean;
+  feedback?: "positive" | "negative";
 }
 
 const PROCESSING_MESSAGES = [
@@ -116,6 +117,39 @@ export default function RollMindPage() {
     setHistory((prev) => prev.filter((entry) => entry.id !== id));
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      alert("Raw output copied to clipboard!");
+    }).catch(err => {
+      console.error('Failed to copy: ', err);
+    });
+  };
+
+  const handleFeedback = async (id: string, isPositive: boolean) => {
+    const entry = history.find(e => e.id === id);
+    if (!entry) return;
+
+    try {
+      const response = await fetch("http://localhost:8000/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inquiry: entry.question,
+          answer: entry.answer,
+          is_positive: isPositive
+        }),
+      });
+
+      if (response.ok) {
+        setHistory(prev => prev.map(e => 
+          e.id === id ? { ...e, feedback: isPositive ? "positive" : "negative" } : e
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to send feedback", err);
+    }
+  };
+
   const clearHistory = () => {
     if (window.confirm("Are you sure you want to clear this session?")) {
       setHistory([]);
@@ -123,33 +157,64 @@ export default function RollMindPage() {
   };
 
   const preprocessMarkdown = (text: string) => {
-    // 1. Only perform essential structural fixes. 
-    // We remove the aggressive dash-to-list regex which was breaking names like "St-Amand"
-    let processed = text.replace(/\|\|/g, "|\n|");
+    // 1. Handle double pipes as row/section breaks.
+    let processed = text.replace(/\|\|/g, "\n");
 
+    // 2. Force newline before a table starts if it's attached to text
+    // Matches "Text:| Col 1 |" and turns it into "Text:\n| Col 1 |"
+    processed = processed.replace(/([^\n|])\s*(\|[^|\n]+\|[^|\n]+\|)/g, "$1\n$2");
+
+    // 3. Fix run-on lists where the model forgets newlines before bolded items or list markers
+    processed = processed.replace(/([^\n])\s*-\s+\*\*/g, "$1\n- **");
+    processed = processed.replace(/([^\n])\s+\*\*([^*]+)\*\*:/g, "$1\n- **$2**:");
+
+    // 4. Identify "faux tables" vs real tables
     const lines = processed.split("\n");
     const result: string[] = [];
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+      let line = lines[i].trim();
+      if (!line) continue;
+
       const pipeCount = (line.match(/\|/g) || []).length;
 
-      // Handle cases where the model starts a table but forgets the separator row
-      if (pipeCount >= 2 && line.startsWith("|") && line.endsWith("|")) {
-        const isLastLine = i === lines.length - 1;
-        const nextLineExists = !isLastLine;
-        const nextLineIsSeparator = nextLineExists && lines[i + 1].includes("---");
-        const prevLineHasPipes = i > 0 && (lines[i - 1].match(/\|/g) || []).length >= 2;
+      if (pipeCount >= 3) {
+        const nextLine = lines[i + 1]?.trim() || "";
+        const prevLine = result[result.length - 1]?.trim() || "";
+        const isTableSeparator = nextLine.includes("---") || prevLine.includes("---") || line.includes("---");
+        
+        // If it's not a table and has many pipes, convert to a list
+        if (!isTableSeparator && !line.startsWith("| ---")) {
+          const parts = line.split("|").map(p => p.trim()).filter(p => p.length > 0);
+          if (parts.length > 2) {
+            parts.forEach(part => result.push("- " + part));
+            continue;
+          }
+        }
+      }
 
-        // If this is the header row but no separator follows, inject one
-        if (!prevLineHasPipes && nextLineExists && !nextLineIsSeparator) {
-          result.push(lines[i]);
-          result.push("|" + Array(pipeCount - 1).fill(" --- |").join(""));
+      // Standard table row cleanup
+      if (pipeCount >= 1) {
+        // Ensure row has start/end pipes if it looks like a table row
+        if (!line.startsWith("|")) line = "| " + line;
+        if (!line.endsWith("|")) line = line + " |";
+
+        const nextLineExists = i < lines.length - 1;
+        const nextLine = lines[i + 1]?.trim() || "";
+        const nextLineIsSeparator = nextLine.includes("---");
+        const prevLine = result[result.length - 1]?.trim() || "";
+        const prevLineHasPipes = prevLine.startsWith("|") && prevLine.endsWith("|");
+
+        // Inject separator if this is a header and next line isn't a separator
+        if (!prevLineHasPipes && nextLineExists && !nextLineIsSeparator && !line.includes("---")) {
+          result.push(line);
+          const cols = (line.match(/\|/g) || []).length - 1;
+          result.push("|" + Array(cols).fill(" --- |").join(""));
           continue;
         }
       }
       
-      result.push(lines[i]);
+      result.push(line);
     }
     
     return result.join("\n");
@@ -412,21 +477,60 @@ export default function RollMindPage() {
           <section key={entry.id} className={styles.card}>
             <div className={styles.cardHeader}>
               <h2 className={styles.cardQuestion}>Inquiry: {entry.question}</h2>
-              <button
-                onClick={() =>
-                  deleteEntry(entry.id)}
-                className={styles.deleteButton}
-                title="Delete from session"
-              >
-                <Trash2 size={18} />
-              </button>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                {process.env.NEXT_PUBLIC_HIDE_CONFIG !== "true" && entry.answer && (
+                  <button
+                    onClick={() => copyToClipboard(entry.answer)}
+                    className={styles.copyButton}
+                    title="Copy Raw Output"
+                  >
+                    <Copy size={18} />
+                  </button>
+                )}
+                <button
+                  onClick={() =>
+                    deleteEntry(entry.id)}
+                  className={styles.deleteButton}
+                  title="Delete from session"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
             </div>
             <div className={styles.cardAnswer}>
               {entry.answer
                 ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {preprocessMarkdown(entry.answer)}
-                  </ReactMarkdown>
+                  <>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {preprocessMarkdown(entry.answer)}
+                    </ReactMarkdown>
+                    {!entry.isStreaming && (
+                      <div className={styles.cardFooter}>
+                        {!entry.feedback ? (
+                          <div className={styles.feedbackGroup}>
+                            <button 
+                              className={styles.feedbackButton} 
+                              onClick={() => handleFeedback(entry.id, true)}
+                              title="Helpful"
+                            >
+                              <ThumbsUp size={14} />
+                            </button>
+                            <button 
+                              className={styles.feedbackButton} 
+                              onClick={() => handleFeedback(entry.id, false)}
+                              title="Not helpful"
+                            >
+                              <ThumbsDown size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className={styles.feedbackThanks}>
+                            {entry.feedback === "positive" ? "Helpful" : "Not helpful"} feedback received. Thank you!
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )
                 : (
                   <div className={styles.loadingText}>

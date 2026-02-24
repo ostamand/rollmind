@@ -321,7 +321,7 @@
   gap: 1rem;
 }
 
-.deleteButton {
+.deleteButton, .copyButton {
   font-size: 1.5rem;
   line-height: 1;
   color: #666;
@@ -331,6 +331,11 @@
 
 .deleteButton:hover {
   color: #ff4d4d;
+  transform: scale(1.1);
+}
+
+.copyButton:hover {
+  color: var(--accent);
   transform: scale(1.1);
 }
 
@@ -378,6 +383,43 @@
 .cardAnswer th {
   background: var(--accent-muted);
   color: var(--accent);
+}
+
+.cardFooter {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.feedbackGroup {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.feedbackButton {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.25rem 0.4rem;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+.feedbackButton:hover {
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.feedbackThanks {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .loadingText {

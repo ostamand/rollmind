@@ -1,14 +1,28 @@
 import os
 import asyncio
+from datetime import datetime
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
+from google.cloud import firestore
 
 from model import manager
 
 app = FastAPI(title="RollMind API")
+
+# Initialize Firestore
+db = None
+try:
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+    if project_id:
+        db = firestore.Client(project=project_id)
+        print(f"Firestore initialized for project: {project_id}")
+    else:
+        print("GOOGLE_CLOUD_PROJECT not set, Firestore disabled.")
+except Exception as e:
+    print(f"Failed to initialize Firestore: {e}")
 
 # Security configuration
 CONFIG_SECRET_KEY = os.getenv("CONFIG_SECRET_KEY")
@@ -29,6 +43,12 @@ app.add_middleware(
 class ConsultationRequest(BaseModel):
     prompt: str
 
+class FeedbackRequest(BaseModel):
+    inquiry: str
+    answer: str
+    is_positive: bool
+    adapter_path: Optional[str] = None
+
 class ConfigUpdate(BaseModel):
     model_id: Optional[str] = None
     adapter_path: Optional[str] = None
@@ -42,6 +62,7 @@ async def health():
         "status": "online",
         "mode": manager.mode,
         "is_loading": manager.is_loading,
+        "firestore": db is not None
     }
     # Add mode-specific health
     if manager.mode == "local":
@@ -79,6 +100,38 @@ async def consult(request: ConsultationRequest):
             yield {"data": f"Error: {str(e)}"}
 
     return EventSourceResponse(event_generator())
+
+@app.post("/feedback")
+async def save_feedback(feedback: FeedbackRequest):
+    if not db:
+        raise HTTPException(status_code=503, detail="Firestore is not available")
+    
+    try:
+        current_config = manager.get_config()
+        
+        # Determine adapter path if not provided (fallback to current loaded one)
+        adapter_path = feedback.adapter_path or current_config.get("adapter_path")
+        if not adapter_path and current_config.get("mode") == "vertex":
+            adapter_path = f"vertex_endpoint:{current_config.get('endpoint_id')}"
+
+        doc_data = {
+            "inquiry": feedback.inquiry,
+            "answer": feedback.answer,
+            "is_positive": feedback.is_positive,
+            "adapter_path": adapter_path,
+            "mode": current_config.get("mode"),
+            "model_id": current_config.get("model_id"),
+            "timestamp": firestore.SERVER_TIMESTAMP,
+            "date_str": datetime.now().isoformat()
+        }
+        
+        # Use a subagent or direct firestore call to add document
+        db.collection("rollmind_feedbacks").add(doc_data)
+        
+        return {"message": "Feedback saved successfully"}
+    except Exception as e:
+        print(f"Error saving feedback: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
