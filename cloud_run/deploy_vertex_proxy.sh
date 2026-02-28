@@ -7,6 +7,8 @@ PROJECT_ID=$(gcloud config get-value project)
 SERVICE_NAME="rollmind-api"
 REGION="us-east4"
 REPO_NAME="ostamand"
+# Use the specific service account by default
+SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-rollmind-api@ostamand-264a1.iam.gserviceaccount.com}"
 # Artifact Registry format: REGION-docker.pkg.dev/PROJECT_ID/REPO_NAME/IMAGE_NAME
 IMAGE_NAME="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$SERVICE_NAME"
 
@@ -19,6 +21,11 @@ fi
 if [ -z "$CONFIG_SECRET_KEY" ]; then
     echo "🔐 CONFIG_SECRET_KEY is not set. This key will protect your /config endpoints."
     read -p "Enter a secret key for configuration (optional): " CONFIG_SECRET_KEY
+fi
+
+if [ -z "$SERVICE_ACCOUNT" ]; then
+    echo "👤 No SERVICE_ACCOUNT environment variable set."
+    read -p "Enter Service Account email (leave empty for default): " SERVICE_ACCOUNT
 fi
 
 # Ensure the Artifact Registry repository exists
@@ -42,12 +49,18 @@ gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 docker push $IMAGE_NAME
 
 echo "🌐 Deploying to Cloud Run (Standard CPU)..."
-gcloud run deploy $SERVICE_NAME \
+DEPLOY_CMD="gcloud run deploy $SERVICE_NAME \
     --image $IMAGE_NAME \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
-    --set-env-vars="INFERENCE_MODE=vertex,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=$REGION,VERTEX_ENDPOINT_ID=$VERTEX_ENDPOINT_ID,CONFIG_SECRET_KEY=$CONFIG_SECRET_KEY"
+    --set-env-vars=\"INFERENCE_MODE=vertex,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=$REGION,VERTEX_ENDPOINT_ID=$VERTEX_ENDPOINT_ID,CONFIG_SECRET_KEY=$CONFIG_SECRET_KEY\""
+
+if [ -n "$SERVICE_ACCOUNT" ]; then
+    DEPLOY_CMD="$DEPLOY_CMD --service-account=$SERVICE_ACCOUNT"
+fi
+
+eval $DEPLOY_CMD
 
 echo "✨ Deployment complete!"
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --platform managed --region $REGION --format='value(status.url)')

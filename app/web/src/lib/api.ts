@@ -1,4 +1,5 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const CONFIG_SECRET = process.env.NEXT_PUBLIC_CONFIG_SECRET || "";
 
 export interface Config {
   mode: string;
@@ -18,7 +19,11 @@ export interface UpdateConfigPayload {
 }
 
 export const fetchConfig = async (): Promise<Config> => {
-  const res = await fetch(`${API_BASE_URL}/config`);
+  const res = await fetch(`${API_BASE_URL}/config`, {
+    headers: {
+      "X-Config-Secret": CONFIG_SECRET,
+    },
+  });
   if (!res.ok) throw new Error("Failed to fetch config");
   return res.json();
 };
@@ -26,7 +31,10 @@ export const fetchConfig = async (): Promise<Config> => {
 export const updateConfig = async (payload: UpdateConfigPayload): Promise<{ config: Config }> => {
   const res = await fetch(`${API_BASE_URL}/config`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json",
+      "X-Config-Secret": CONFIG_SECRET,
+    },
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to update config");

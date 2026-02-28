@@ -10,6 +10,8 @@ RUN pip install --no-cache-dir \
     uvicorn \
     sse-starlette \
     google-cloud-aiplatform \
+    google-cloud-firestore \
+    requests \
     python-dotenv
 
 # Copy only the backend API source code

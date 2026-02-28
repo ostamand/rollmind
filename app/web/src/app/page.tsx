@@ -7,6 +7,13 @@ import remarkGfm from "remark-gfm";
 import { ArrowUp, Copy, Send, Settings, Trash2, X, ThumbsUp, ThumbsDown } from "lucide-react";
 import styles from "./page.module.css";
 import DiceRoller from "./components/DiceRoller";
+import { 
+  fetchConfig, 
+  updateConfig, 
+  submitFeedback, 
+  submitConsultation, 
+  Config 
+} from "../lib/api";
 
 interface Entry {
   id: string;
@@ -35,7 +42,7 @@ export default function RollMindPage() {
   const [processingMessage, setProcessingMessage] = useState(
     PROCESSING_MESSAGES[0],
   );
-  const [config, setConfig] = useState({
+  const [config, setConfig] = useState<Config>({
     mode: "local",
     model_id: "",
     adapter_path: "",
@@ -63,8 +70,7 @@ export default function RollMindPage() {
 
   // Fetch initial config
   useEffect(() => {
-    fetch("http://localhost:8000/config")
-      .then((res) => res.json())
+    fetchConfig()
       .then((data) => {
         setConfig(data);
         setNewConfig(data);
@@ -82,8 +88,7 @@ export default function RollMindPage() {
   // Refresh config when modal opens
   useEffect(() => {
     if (isConfigOpen) {
-      fetch("http://localhost:8000/config")
-        .then((res) => res.json())
+      fetchConfig()
         .then((data) => {
           setConfig(data);
           setNewConfig(data);
@@ -124,16 +129,9 @@ export default function RollMindPage() {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(finalPayload),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setConfig(data.config);
-        setIsConfigOpen(false);
-      }
+      const data = await updateConfig(finalPayload);
+      setConfig(data.config);
+      setIsConfigOpen(false);
     } catch (err) {
       console.error("Failed to update config", err);
     }
@@ -156,21 +154,10 @@ export default function RollMindPage() {
     if (!entry) return;
 
     try {
-      const response = await fetch("http://localhost:8000/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inquiry: entry.question,
-          answer: entry.answer,
-          is_positive: isPositive
-        }),
-      });
-
-      if (response.ok) {
-        setHistory(prev => prev.map(e => 
-          e.id === id ? { ...e, feedback: isPositive ? "positive" : "negative" } : e
-        ));
-      }
+      await submitFeedback(entry.question, entry.answer, isPositive);
+      setHistory(prev => prev.map(e => 
+        e.id === id ? { ...e, feedback: isPositive ? "positive" : "negative" } : e
+      ));
     } catch (err) {
       console.error("Failed to send feedback", err);
     }
@@ -276,75 +263,46 @@ export default function RollMindPage() {
       isStreaming: true,
     }]);
 
+    let accumulatedAnswer = "";
+
     try {
-      const response = await fetch("http://localhost:8000/consult", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: currentInquiry }),
-      });
-
-      if (!response.ok) throw new Error("Connection failed.");
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) throw new Error("No readable stream.");
-
-      let accumulatedAnswer = "";
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // SSE can use \r\n, \r, or \n as line endings.
-        // We split by \n and handle potential \r separately.
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || ""; // Save partial line for next chunk
-
-        for (const line of lines) {
-          // Remove potential \r from the end of the line
-          const cleanLine = line.endsWith("\r") ? line.slice(0, -1) : line;
-
-          if (cleanLine.startsWith("data: ")) {
-            const content = cleanLine.slice(6);
-            if (content === "[DONE]") break;
-
-            accumulatedAnswer += content;
-
-            setHistory((prev) =>
-              prev.map((entry) =>
-                entry.id === entryId
-                  ? { ...entry, answer: accumulatedAnswer }
-                  : entry
-              )
-            );
-          }
+      await submitConsultation(currentInquiry, {
+        onToken: (token) => {
+          accumulatedAnswer += token;
+          setHistory((prev) =>
+            prev.map((entry) =>
+              entry.id === entryId
+                ? { ...entry, answer: accumulatedAnswer }
+                : entry
+            )
+          );
+        },
+        onDone: () => {
+          setHistory((prev) =>
+            prev.map((entry) =>
+              entry.id === entryId ? { ...entry, isStreaming: false } : entry
+            )
+          );
+          setIsLoading(false);
+        },
+        onError: (err) => {
+          console.error(err);
+          setHistory((prev) =>
+            prev.map((entry) =>
+              entry.id === entryId
+                ? {
+                  ...entry,
+                  answer: "Error: The system is currently unreachable.",
+                  isStreaming: false,
+                }
+                : entry
+            )
+          );
+          setIsLoading(false);
         }
-      }
-
-      // Finalize entry
-      setHistory((prev) =>
-        prev.map((entry) =>
-          entry.id === entryId ? { ...entry, isStreaming: false } : entry
-        )
-      );
+      });
     } catch (err) {
       console.error(err);
-      setHistory((prev) =>
-        prev.map((entry) =>
-          entry.id === entryId
-            ? {
-              ...entry,
-              answer: "Error: The system is currently unreachable.",
-              isStreaming: false,
-            }
-            : entry
-        )
-      );
-    } finally {
       setIsLoading(false);
     }
   };
