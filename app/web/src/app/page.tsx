@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArrowUp, Copy, Send, Settings, Trash2, X, ThumbsUp, ThumbsDown } from "lucide-react";
 import styles from "./page.module.css";
+import DiceRoller from "./components/DiceRoller";
 
 interface Entry {
   id: string;
@@ -40,6 +41,8 @@ export default function RollMindPage() {
     adapter_path: "",
     adapter_base_dir: "",
     endpoint_id: "",
+    project: "",
+    location: "",
   });
   const [newConfig, setNewConfig] = useState({
     model_id: "",
@@ -88,6 +91,29 @@ export default function RollMindPage() {
         .catch((err) => console.error("Failed to fetch config", err));
     }
   }, [isConfigOpen]);
+
+  // Stable components for ReactMarkdown to prevent unmounting when typing
+  const markdownComponents = useMemo(() => ({
+    code({ node, className, children, ...props }: any) {
+      const matchComplete = /language-dice-roll-complete/.exec(className || '');
+      const matchStreaming = /language-dice-roll-streaming/.exec(className || '');
+      
+      if (matchComplete || matchStreaming) {
+        return (
+          <DiceRoller 
+            formula={String(children).trim()} 
+            isComplete={!!matchComplete} 
+          />
+        );
+      }
+      
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    }
+  }), []);
 
   const handleUpdateConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,8 +183,20 @@ export default function RollMindPage() {
   };
 
   const preprocessMarkdown = (text: string) => {
+    // 0. Handle [ROLL] formula [/ROLL] or [ROLL] formula
+    // We convert it to a custom code block that ReactMarkdown components can handle.
+    // If it's missing the closing tag (still streaming), we mark it as incomplete.
+    let processed = text.replace(/\[ROLL\](.*?)\[\/ROLL\]/gs, (_, formula) => {
+      return `\n\`\`\`dice-roll-complete\n${formula.trim()}\n\`\`\`\n`;
+    });
+    
+    // Handle partial streaming [ROLL]
+    processed = processed.replace(/\[ROLL\](?!.*\`\`\`dice-roll)(.*)$/gs, (_, formula) => {
+      return `\n\`\`\`dice-roll-streaming\n${formula.trim()}\n\`\`\`\n`;
+    });
+
     // 1. Handle double pipes as row/section breaks.
-    let processed = text.replace(/\|\|/g, "\n");
+    processed = processed.replace(/\|\|/g, "\n");
 
     // 2. Force newline before a table starts if it's attached to text
     // Matches "Text:| Col 1 |" and turns it into "Text:\n| Col 1 |"
@@ -501,7 +539,10 @@ export default function RollMindPage() {
               {entry.answer
                 ? (
                   <>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={markdownComponents}
+                    >
                       {preprocessMarkdown(entry.answer)}
                     </ReactMarkdown>
                     {!entry.isStreaming && (

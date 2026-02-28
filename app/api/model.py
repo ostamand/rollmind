@@ -2,6 +2,7 @@ import os
 import time
 import asyncio
 import threading
+import json
 from typing import Optional, List
 from google.cloud import aiplatform
 from dotenv import load_dotenv
@@ -211,34 +212,35 @@ class VertexModelManager(BaseManager):
             endpoint_name=f"projects/{self.project}/locations/{self.location}/endpoints/{self.endpoint_id}"
         )
         
-        instances = [{"prompt": prompt}]
-        parameters = {"max_tokens": 1024, "temperature": 0.7, "top_p": 0.9}
+        # Format payload as standard OpenAI chat completions for vLLM
+        openai_payload = {
+            "model": "gemma",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 400,
+            "temperature": 0.7,
+            "top_p": 0.9,
+        }
         
         try:
-            # 2. Prevent event loop blocking by offloading the initial connection to a thread
-            responses = await asyncio.to_thread(
-                endpoint.server_streaming_predict,
-                instances=instances, 
-                parameters=parameters
+            # vLLM on Vertex often requires raw_predict to bypass standard Vertex formatting
+            response = await asyncio.to_thread(
+                endpoint.raw_predict,
+                body=json.dumps(openai_payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"}
             )
             
-            # 3. Safely iterate through the blocking stream chunks 
-            # (Note: we use asyncio.to_thread for the 'next' calls under the hood to stay truly async)
-            def get_next_chunk(iterator):
-                try:
-                    return next(iterator)
-                except StopIteration:
-                    return None
-
-            iterator = iter(responses)
-            while True:
-                response = await asyncio.to_thread(get_next_chunk, iterator)
-                if response is None:
-                    break
-                    
-                if response.predictions:
-                    # pytorch-vllm-serve typically yields the text delta as the first prediction element
-                    yield response.predictions[0]
+            # Parse OpenAI-compatible response
+            response_data = json.loads(response.text)
+            
+            if "choices" in response_data and len(response_data["choices"]) > 0:
+                content = response_data["choices"][0]["message"]["content"]
+                yield content.strip()
+            elif "error" in response_data:
+                yield f"\n[API Error: {response_data['error']}]"
+            else:
+                yield "\n[Unrecognized response format from Vertex AI.]"
                     
         except Exception as e:
             # Log the full error for the administrator

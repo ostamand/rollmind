@@ -29,10 +29,20 @@ pip install fastapi uvicorn sse-starlette
 ```
 
 ### Configuration
-Edit `app/api/.env` to configure your model paths and memory limits:
+Edit `app/api/.env` to configure your model and inference mode:
+
+**Common Settings:**
+- `INFERENCE_MODE`: Set to `local` (default) or `vertex`.
+
+**Local Mode Settings:**
 - `MODEL_ID`: Base model (e.g., `google/gemma-7b-it`)
 - `ADAPTER_PATH`: Path to your best Step 2 checkpoint.
 - `MAX_GPU_MEMORY`: Set based on your VRAM (e.g., `7.5GiB` for 12GB cards).
+
+**Vertex Mode Settings:**
+- `GOOGLE_CLOUD_PROJECT`: Your GCP Project ID.
+- `GOOGLE_CLOUD_LOCATION`: The region where your endpoint is deployed (e.g., `us-east4`).
+- `VERTEX_ENDPOINT_ID`: The **numeric ID** of your Vertex AI Endpoint (e.g., `9096886418218680320`).
 
 ### Start Server
 Run from the `app/api/` directory (ensure `ADAPTER_PATH` in `.env` is relative to this location):
