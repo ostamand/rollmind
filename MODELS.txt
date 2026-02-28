@@ -1,0 +1,4 @@
+- Best model without rolls. Rank 128.
+    ../../step2/7b_r138_checkpoint-400
+- Model with simple rolls only. Rank 64.
+    ./../out/step2/test1_simple-roll_7b_r64/checkpoint-800

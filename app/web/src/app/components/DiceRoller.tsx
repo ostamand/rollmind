@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dices } from "lucide-react";
 import styles from "../page.module.css";
 
@@ -9,63 +9,87 @@ interface DiceRollerProps {
   isComplete: boolean;
 }
 
-// Session-persistent cache to prevent re-rolling on remounts
+// Session-persistent cache to prevent re-rolling same results
 const resultCache = new Map<string, { total: number; breakdown: string }>();
 
 export default function DiceRoller({ formula, isComplete }: DiceRollerProps) {
   const normalizedFormula = formula.toLowerCase().replace(/\s+/g, "");
-  
-  // 1. Initial State: Check cache immediately to stop the loop
+
+  // 1. Check cache immediately to prevent unnecessary animation if already rolled
   const cached = resultCache.get(normalizedFormula);
-  
-  const [result, setResult] = useState<{ total: number; breakdown: string } | null>(cached || null);
+
+  const [result, setResult] = useState<
+    { total: number; breakdown: string } | null
+  >(cached || null);
   const [isRolling, setIsRolling] = useState(!cached);
-  const [displayValue, setDisplayValue] = useState<number | string>(cached?.total || "?");
+  const [displayValue, setDisplayValue] = useState<number | string>(
+    cached?.total || "?",
+  );
   const [sides, setSides] = useState(20);
-  
-  const animationHandled = useRef(!!cached);
 
-  // Update sides for animation context
+  // Use refs to track state across re-renders/remounts during streaming
+  const formulaRef = useRef(normalizedFormula);
+  const finalizeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 2. Handle Formula Changes (Streaming)
   useEffect(() => {
-    const match = normalizedFormula.match(/\d+d(\d+)/);
-    if (match) setSides(parseInt(match[1]));
-  }, [normalizedFormula]);
+    // If the formula changed while we are still streaming
+    if (formulaRef.current !== normalizedFormula) {
+      formulaRef.current = normalizedFormula;
 
-  // 2. Logic: Handle the transition to 'complete'
-  useEffect(() => {
-    // If we already have a result (from cache or finished animation), do nothing
-    if (result || animationHandled.current) return;
+      const match = normalizedFormula.match(/\d+d(\d+)/);
+      if (match) setSides(parseInt(match[1]));
 
-    if (isComplete) {
-      animationHandled.current = true;
-      const rollResult = parseFormula(normalizedFormula);
-      
-      if (rollResult) {
-        // CRITICAL: Save to cache IMMEDIATELY so remounts see it as settled
-        resultCache.set(normalizedFormula, rollResult);
-
-        // Play the animation once
-        const timer = setTimeout(() => {
-          setResult(rollResult);
-          setIsRolling(false);
-          setDisplayValue(rollResult.total);
-        }, 1000);
-        return () => clearTimeout(timer);
-      } else {
+      // If we previously finished a roll but the model is now changing it
+      const newCache = resultCache.get(normalizedFormula);
+      if (newCache) {
+        setResult(newCache);
         setIsRolling(false);
-        setDisplayValue("Error");
+        setDisplayValue(newCache.total);
+      } else {
+        setResult(null);
+        setIsRolling(true);
       }
     }
-  }, [isComplete, normalizedFormula, result]);
+  }, [normalizedFormula]);
 
-  // 3. Animation Interval
+  // 3. Handle Completion with Dynamic Delay
   useEffect(() => {
-    if (!isRolling) return;
-    const interval = setInterval(() => {
+    // If we just became complete and aren't already finalizing
+    if (isComplete && isRolling && !result && !finalizeTimerRef.current) {
+      // Random delay between 0.4s and 1s to make it feel snappier
+      const randomDelay = Math.floor(Math.random() * 600) + 400;
+
+      finalizeTimerRef.current = setTimeout(() => {
+        const rollResult = parseFormula(normalizedFormula);
+        if (rollResult) {
+          resultCache.set(normalizedFormula, rollResult);
+          setResult(rollResult);
+          setDisplayValue(rollResult.total);
+        } else {
+          setDisplayValue("Error");
+        }
+        setIsRolling(false);
+        finalizeTimerRef.current = null;
+      }, randomDelay);
+      }
+
+      return () => {
+      if (finalizeTimerRef.current) {
+        clearTimeout(finalizeTimerRef.current);
+        finalizeTimerRef.current = null;
+      }
+      };
+      }, [isComplete, isRolling, normalizedFormula, result]);
+
+      // 4. Animation Interval
+      useEffect(() => {
+      if (!isRolling) return;
+      const interval = setInterval(() => {
       setDisplayValue(Math.floor(Math.random() * sides) + 1);
-    }, 80);
-    return () => clearInterval(interval);
-  }, [isRolling, sides]);
+      }, 50);
+      return () => clearInterval(interval);
+      }, [isRolling, sides]);
 
   function parseFormula(f: string) {
     try {
@@ -82,9 +106,13 @@ export default function DiceRoller({ formula, isComplete }: DiceRollerProps) {
         total += r;
       }
       const finalTotal = total + mod;
-      const breakdown = rolls.length > 1 
-        ? `(${rolls.join(" + ")})${mod !== 0 ? (mod > 0 ? " + " + mod : " - " + Math.abs(mod)) : ""}`
-        : `${rolls[0]}${mod !== 0 ? (mod > 0 ? " + " + mod : " - " + Math.abs(mod)) : ""}`;
+      const breakdown = rolls.length > 1
+        ? `(${rolls.join(" + ")})${
+          mod !== 0 ? (mod > 0 ? " + " + mod : " - " + Math.abs(mod)) : ""
+        }`
+        : `${rolls[0]}${
+          mod !== 0 ? (mod > 0 ? " + " + mod : " - " + Math.abs(mod)) : ""
+        }`;
       return { total: finalTotal, breakdown };
     } catch (e) {
       return null;
@@ -92,9 +120,16 @@ export default function DiceRoller({ formula, isComplete }: DiceRollerProps) {
   }
 
   return (
-    <div className={`${styles.diceRoller} ${isRolling ? styles.rolling : ""}`} role="status" aria-live="polite">
+    <div
+      className={`${styles.diceRoller} ${isRolling ? styles.rolling : ""}`}
+      role="status"
+      aria-live="polite"
+    >
       <div className={styles.diceHeader}>
-        <Dices size={14} className={`${styles.diceIcon} ${isRolling ? styles.spin : ""}`} />
+        <Dices
+          size={14}
+          className={`${styles.diceIcon} ${isRolling ? styles.spin : ""}`}
+        />
         <span>{formula || "Rolling..."}</span>
       </div>
       <div className={styles.diceMain}>

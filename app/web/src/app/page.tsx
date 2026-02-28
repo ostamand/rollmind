@@ -287,7 +287,7 @@ export default function RollMindPage() {
     }
   };
 
-  const preprocessMarkdown = (text: string) => {
+  const preprocessMarkdown = (text: string, isFinal: boolean) => {
     // 0. Handle [[SYSTEM_MESSAGE: ... ]]
     let processed = text.replace(
       /\[\[SYSTEM_MESSAGE: (.*?)\]\]/gs,
@@ -302,10 +302,12 @@ export default function RollMindPage() {
     });
 
     // Handle partial streaming [ROLL]
+    // If isFinal is true, we treat unclosed rolls as complete
+    const rollType = isFinal ? "dice-roll-complete" : "dice-roll-streaming";
     processed = processed.replace(
       /\[ROLL\](?!.*\`\`\`dice-roll)(.*)$/gs,
       (_, formula) => {
-        return `\n\`\`\`dice-roll-streaming\n${formula.trim()}\n\`\`\`\n`;
+        return `\n\`\`\`${rollType}\n${formula.trim()}\n\`\`\`\n`;
       },
     );
 
@@ -777,7 +779,7 @@ export default function RollMindPage() {
                       remarkPlugins={[remarkGfm]}
                       components={markdownComponents}
                     >
-                      {preprocessMarkdown(entry.answer)}
+                      {preprocessMarkdown(entry.answer, !entry.isStreaming)}
                     </ReactMarkdown>
                     {!entry.isStreaming && (
                       <div className={styles.cardFooter}>
