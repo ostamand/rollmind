@@ -7,18 +7,10 @@ from tqdm import tqdm
 import vertexai
 from vertexai.generative_models import GenerativeModel
 from dotenv import load_dotenv
+from prepare.utils import generate_random_profile
 
 # Load environment variables
 load_dotenv()
-
-# DATASET MIX STRATEGY (Comment for Training)
-# ---------------------------------------------------------
-# For optimal "Oracle" behavior, mix this refusal data into your Step 2 
-# (Instruction Tuning) dataset. A recommended ratio is:
-# - 85-90% Valid D&D 2024 Q&A (from generate_qa.py and generate_scenarios.py)
-# - 10-15% Refusal Data (from this script)
-# This ensures the model remains helpful for D&D but firm on its boundaries.
-# ---------------------------------------------------------
 
 REFUSAL_CATEGORIES = [
     {
@@ -130,10 +122,11 @@ def main():
                 qa_pairs = generate_refusal_batch(cat, model, batch_size)
                 
                 for qa in qa_pairs:
+                    profile = generate_random_profile()
                     # Format for SFT training: Official Gemma Instruction format
                     entry = {
                         "category": cat['category'],
-                        "text": f"<start_of_turn>user\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
+                        "text": f"<start_of_turn>user\n{profile}\n\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
                     }
                     f_out.write(json.dumps(entry) + "\n")
                 

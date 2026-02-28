@@ -8,6 +8,7 @@ from tqdm import tqdm
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part
 from dotenv import load_dotenv
+from prepare.utils import generate_random_profile
 
 # Load environment variables from .env file if it exists
 load_dotenv()
@@ -148,10 +149,11 @@ def main():
                     return
 
                 for qa in qa_pairs:
+                    profile = generate_random_profile()
                     # Format for SFT training: Official Gemma Instruction format
                     entry = {
                         "chunk_idx": idx,
-                        "text": f"<start_of_turn>user\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
+                        "text": f"<start_of_turn>user\n{profile}\n\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
                     }
                     f_raw.write(json.dumps(entry) + "\n")
                 

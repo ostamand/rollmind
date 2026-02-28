@@ -5,6 +5,9 @@ import threading
 import json
 from typing import Optional, List
 from google.cloud import aiplatform
+import google.auth
+import google.auth.transport.requests
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -203,51 +206,95 @@ class VertexModelManager(BaseManager):
         if endpoint_id:
             self.endpoint_id = endpoint_id
 
+    def _get_auth_token(self):
+        creds, project = google.auth.default()
+        auth_req = google.auth.transport.requests.Request()
+        creds.refresh(auth_req)
+        return creds.token
+
     async def stream_generate(self, prompt: str):
         if not self.endpoint_id:
-            yield "\n[RollMind API is online, but no Vertex AI Endpoint ID has been configured yet. Please update the configuration or set the VERTEX_ENDPOINT_ID environment variable.]"
+            yield "\n[RollMind API is online, but no Vertex AI Endpoint ID has been configured yet.]"
             return
 
-        endpoint = aiplatform.Endpoint(
-            endpoint_name=f"projects/{self.project}/locations/{self.location}/endpoints/{self.endpoint_id}"
-        )
+        # 1. Get Token
+        try:
+            token = await asyncio.to_thread(self._get_auth_token)
+        except Exception as e:
+            yield f"\n[Authentication Error: {e}]"
+            return
+
+        # Use :rawPredict (POST) with stream=True. 
+        # vLLM will stream if headers and payload are correct.
+        url = f"https://{self.location}-aiplatform.googleapis.com/v1/projects/{self.project}/locations/{self.location}/endpoints/{self.endpoint_id}:rawPredict"
         
-        # Format payload as standard OpenAI chat completions for vLLM
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream"
+        }
+        
+        # OpenAI payload format
         openai_payload = {
             "model": "gemma",
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
+            "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 400,
             "temperature": 0.7,
             "top_p": 0.9,
+            "stream": True 
         }
         
         try:
-            # vLLM on Vertex often requires raw_predict to bypass standard Vertex formatting
-            response = await asyncio.to_thread(
-                endpoint.raw_predict,
-                body=json.dumps(openai_payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"}
-            )
+            # 2. Open HTTP stream with manual chunk handling
+            def make_request():
+                # Use a small timeout for the connection, but none for the stream itself
+                return requests.post(url, headers=headers, json=openai_payload, stream=True, timeout=(5, 60))
+
+            response = await asyncio.to_thread(make_request)
             
-            # Parse OpenAI-compatible response
-            response_data = json.loads(response.text)
-            
-            if "choices" in response_data and len(response_data["choices"]) > 0:
-                content = response_data["choices"][0]["message"]["content"]
-                yield content.strip()
-            elif "error" in response_data:
-                yield f"\n[API Error: {response_data['error']}]"
-            else:
-                yield "\n[Unrecognized response format from Vertex AI.]"
+            if response.status_code != 200:
+                error_detail = response.text
+                print(f"❌ Vertex API Error ({response.status_code}): {error_detail}")
+                yield f"\n[Vertex AI Error: {response.status_code}]"
+                return
+
+            # 3. Process the stream chunk by chunk
+            def iterate_tokens(resp):
+                # We iterate over chunks rather than lines to bypass buffering
+                for chunk in resp.iter_content(chunk_size=None):
+                    if not chunk:
+                        continue
+                    
+                    decoded = chunk.decode("utf-8")
+                    # SSE data can be multiple events in one chunk
+                    for line in decoded.split("\n"):
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                return
+                            try:
+                                data = json.loads(data_str)
+                                if "choices" in data and data["choices"]:
+                                    content = data["choices"][0].get("delta", {}).get("content", "")
+                                    if content:
+                                        yield content
+                            except:
+                                continue
+
+            # 4. Stream tokens to client with artificial delay to force UI rendering
+            # Network latency sometimes bundles tokens together; this ensures a smooth "typing" feel.
+            gen = iterate_tokens(response)
+            while True:
+                token = await asyncio.to_thread(next, gen, None)
+                if token is None:
+                    break
+                yield token
+                # Small sleep to ensure React has time to render the frame before the next batch
+                await asyncio.sleep(0.01)
                     
         except Exception as e:
-            # Log the full error for the administrator
-            print(f"❌ Vertex AI Connection Error: {e}")
-            
-            # Yield a user-friendly message in the stream
-            yield "\n[The RollMind engine is currently offline. Please contact the administrator.]"
+            print(f"❌ Vertex Stream Error: {e}")
+            yield "\n[The RollMind engine connection was interrupted.]"
 
     def get_config(self):
         return {

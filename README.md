@@ -133,15 +133,65 @@ python3 inference.py \
     --prompt "What is the hit point roll dice for a priest"
 ```
 
+## 8. Deployment (Vertex AI)
+
+To deploy the fine-tuned model as a scalable API on Vertex AI:
+
+### A. Merge LoRA Weights
+Before deployment, merge the LoRA adapter back into the base model weights.
+```bash
+python3 endpoint/merge_model.py \
+    --model_id google/gemma-7b-it \
+    --adapter_path ./out/step2/test1_7b_r64/checkpoint-250 \
+    --output_dir ./merged_model
+```
+
+### B. Deploy to Vertex AI Endpoint
+This script uploads the merged model to GCS (if not already present), registers it in the Vertex AI Model Registry, and deploys it to an L4 GPU endpoint.
+
+**Important:** Vertex AI does not support the `global` location for model deployment. Ensure your location is set to a specific region (e.g., `us-east4`).
+
+```bash
+python3 endpoint/deploy.py \
+    --gcs_path gs://ostamand/rollmind/models/rollmind-v1 \
+    --name rollmind-v1 \
+    --local_model_dir ./merged_model \
+    --location us-east4
+```
+
+**Note:** If the model weights are already in your GCS bucket, you can skip the upload step using:
+```bash
+python3 endpoint/deploy.py --gcs_path gs://ostamand/rollmind/models/rollmind-v1 --skip-upload --location us-east4
+```
+
+### C. Toggling Costs (On/Off)
+To avoid 24/7 GPU costs, you can "turn off" the endpoint when not in use. This undeploys the model but keeps the endpoint and model configuration intact.
+
+```bash
+# Turn OFF (Stop GPU billing)
+python3 endpoint/toggle_endpoint.py off --name rollmind-v1
+
+# Turn ON (Redeploy and resume)
+python3 endpoint/toggle_endpoint.py on --name rollmind-v1
+```
+
+### D. Cleanup
+To permanently remove the endpoint and model:
+```bash
+python3 endpoint/cleanup.py --endpoint_id <YOUR_ENDPOINT_ID>
+```
+
 ## Project Structure
 - `data/`: Raw markdown and generated JSONL datasets.
 - `prepare/`: Scripts for data processing, splitting, and QA generation.
 - `train/`: Fine-tuning scripts and JSON configurations for both steps.
 - `eval/`: Evaluation scripts for measuring performance.
+- `endpoint/`: Deployment automation for Vertex AI (merging, uploading, and hosting).
+- `app/`: Source code for the web interface and API proxy.
 - `out/`: Trained model adapters, metrics, and checkpoints.
 
 
-## 8. Current Best
+## 9. Current Best
 
 ```bash
 python3 inference.py --prompt "What weapons can a Fighter use" --adapter_path ./out/step2/test1_7b_r64/checkpoint-250 --model_id 'google/gemma-7b-it'

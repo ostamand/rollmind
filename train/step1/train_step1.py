@@ -70,6 +70,7 @@ def main():
     # 3. LoRA Configuration
     default_targets = ["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"]
     target_modules = cfg.get("target_modules", default_targets)
+    
     lora_r = cfg.get("lora_r", 8)
     lora_alpha = cfg.get("lora_alpha", 16)
     lora_dropout = cfg.get("lora_dropout", 0.05)
@@ -114,6 +115,10 @@ def main():
     else:
         print(f"Using configuration batch size: {train_batch_size} (accumulation: {grad_accum})")
 
+    # Select optimizer: use config or default to adamw_8bit
+    optim = cfg.get("optim", "adamw_8bit")
+    print(f"Using optimizer: {optim}")
+
     sft_config = SFTConfig(
         output_dir=cfg["output_dir"],
         learning_rate=cfg.get("learning_rate", 2e-4),
@@ -129,7 +134,7 @@ def main():
         save_steps=cfg.get("save_steps", eval_steps),
         load_best_model_at_end=True,
         metric_for_best_model="loss",
-        optim="adamw_8bit",
+        optim=optim,
         report_to="none",
         dataset_text_field="text",
         max_length=cfg.get("max_seq_length", 128),

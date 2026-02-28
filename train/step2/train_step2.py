@@ -73,6 +73,7 @@ def main():
 
     # 3. Load Step 1 Adapters or initialize new LoRA
     lora_config = None
+    
     if "adapter_path" in cfg and cfg["adapter_path"]:
         print(f"Loading Step 1 adapters from {cfg['adapter_path']}...")
         model = PeftModel.from_pretrained(base_model, cfg["adapter_path"], is_trainable=True)
@@ -156,6 +157,10 @@ def main():
     else:
         print(f"Using configuration batch size: {train_batch_size} (accumulation: {grad_accum})")
 
+    # Select optimizer: use config or default to adamw_8bit
+    optim = cfg.get("optim", "adamw_8bit")
+    print(f"Using optimizer: {optim}")
+
     sft_config = SFTConfig(
         output_dir=cfg["output_dir"],
         learning_rate=cfg.get("learning_rate", 5e-5),
@@ -171,7 +176,7 @@ def main():
         save_steps=cfg.get("save_steps", eval_steps),
         load_best_model_at_end=True,
         metric_for_best_model="loss",
-        optim="adamw_8bit", # Switched from paged_adamw_8bit for stability
+        optim=optim,
         report_to="none",
         max_length=cfg.get("max_seq_length", 1024),
         warmup_steps=cfg.get("warmup_steps", 0),

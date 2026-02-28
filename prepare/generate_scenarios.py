@@ -7,6 +7,7 @@ from tqdm import tqdm
 import vertexai
 from vertexai.generative_models import GenerativeModel
 from dotenv import load_dotenv
+from prepare.utils import generate_random_profile
 
 # Load environment variables
 load_dotenv()
@@ -217,10 +218,11 @@ def main():
                 qa_pairs = generate_scenario_qa(scenario, context_text, model, args.batch_size, i)
                 
                 for qa in qa_pairs:
+                    profile = generate_random_profile()
                     entry = {
                         "scenario": scenario['name'],
                         "batch_idx": i,
-                        "text": f"<start_of_turn>user\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
+                        "text": f"<start_of_turn>user\n{profile}\n\n{qa['question']}<end_of_turn>\n<start_of_turn>model\n{qa['answer']}<end_of_turn>"
                     }
                     f_out.write(json.dumps(entry) + "\n")
                 
