@@ -47,8 +47,6 @@ gcloud run deploy $SERVICE_NAME \
     --platform managed \
     --region $REGION \
     --allow-unauthenticated \
-    --memory 2Gi \
-    --cpu 1 \
     --set-env-vars="INFERENCE_MODE=vertex,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=$REGION,VERTEX_ENDPOINT_ID=$VERTEX_ENDPOINT_ID,CONFIG_SECRET_KEY=$CONFIG_SECRET_KEY"
 
 echo "✨ Deployment complete!"
