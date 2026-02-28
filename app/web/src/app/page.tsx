@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ArrowUp,
   Copy,
+  Info,
   Send,
   Settings,
   ThumbsDown,
@@ -89,6 +90,7 @@ export default function RollMindPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [processingMessage, setProcessingMessage] = useState(
     PROCESSING_MESSAGES[0],
@@ -403,8 +405,10 @@ export default function RollMindPage() {
     let accumulatedAnswer = "";
 
     try {
-      const sendProfile = process.env.NEXT_PUBLIC_DISABLE_PROFILE !== "true" ? profile : undefined;
-      
+      const sendProfile = process.env.NEXT_PUBLIC_DISABLE_PROFILE !== "true"
+        ? profile
+        : undefined;
+
       await submitConsultation(currentInquiry, {
         onToken: (token) => {
           accumulatedAnswer += token;
@@ -451,6 +455,15 @@ export default function RollMindPage() {
     <main className={styles.main}>
       <header className={styles.header}>
         <div className={styles.headerTop}>
+          <div className={styles.leftActions}>
+            <button
+              className={styles.actionButton}
+              onClick={() => setIsInfoOpen(true)}
+              title="About RollMind"
+            >
+              <Info size={24} color="var(--accent)" />
+            </button>
+          </div>
           <Image
             src="/RollMind-logo-only.webp"
             alt="RollMind Logo"
@@ -491,6 +504,107 @@ export default function RollMindPage() {
           D&D 2024
         </p>
       </header>
+
+      {isInfoOpen && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setIsInfoOpen(false)}
+        >
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>About RollMind</h2>
+              <button
+                onClick={() => setIsInfoOpen(false)}
+                className={styles.closeModalButton}
+              >
+                <X size={24} color="var(--accent)" />
+              </button>
+            </div>
+            <div className={styles.infoContent}>
+              <h3>Overview</h3>
+              <p>
+                <b>RollMind</b> is a specialized assistant for the{" "}
+                <b>D&D 5e (2024)</b>{" "}
+                rules. It has been fine-tuned on the official 2024 Core Rulebook
+                documentation to provide accurate, authoritative answers to your
+                gameplay questions.
+              </p>
+
+              <h3>Key Features</h3>
+              <ul>
+                <li>
+                  <b>Rule Reference:</b>{" "}
+                  Instant access to rules including combat maneuvers, movement,
+                  and tactical conditions.
+                </li>
+                <li>
+                  <b>Character Grounding:</b>{" "}
+                  Profiles ground answers in your character's class, level, and
+                  stats—including support for <b>Multiclassing</b> and{" "}
+                  <b>Leveling Up</b>.
+                </li>
+                <li>
+                  <b>Interactive Rolls:</b>{" "}
+                  RollMind can automatically roll dice when you ask (e.g., "roll
+                  1d12+2") or when a rule requires a check. Rolls animate
+                  directly in the chat.
+                </li>
+                <li>
+                  <b>Spells & Actions: Cast spells</b>{" "}
+                  or perform actions with automatic <b>Upcasting</b>,{" "}
+                  <b>Cantrip Scaling</b>, and <b>Save DC</b>{" "}
+                  math. It even describes outcomes for both{" "}
+                  <b>Success and Failure</b>.
+                </li>
+                <li>
+                  <b>2024 Innovations:</b> Deep knowledge of new mechanics like
+                  {" "}
+                  <b>Weapon Mastery</b> (Cleave, Topple, etc.) and updated{" "}
+                  <b>Crafting & Tools</b> rules.
+                </li>
+              </ul>
+
+              <h3>Availability & Open Source</h3>
+              <p>
+                Due to the high cost of GPU inference, the hosted RollMind
+                engine may not always be running. However, the mission of this
+                project is accessibility: the full fine-tuned <b>Gemma</b>{" "}
+                model is available open-source on <b>Hugging Face</b>.
+              </p>
+              <p>
+                Download the model here:{" "}
+                <a
+                  href="https://huggingface.co/placeholder-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: "var(--accent)",
+                    textDecoration: "underline",
+                  }}
+                >
+                  RollMind on Hugging Face
+                </a>
+              </p>
+
+              <h3>How to use</h3>
+              <p>
+                Simply type your question in the inquiry zone. To make answers
+                more relevant, configure your <b>Character Profile</b>{" "}
+                using the icon in the top-right. RollMind will automatically use
+                your stats to calculate DCs and bonuses.
+              </p>
+            </div>
+            <div className={styles.modalActions}>
+              <button
+                onClick={() => setIsInfoOpen(false)}
+                className={styles.saveButton}
+              >
+                Get Started
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isProfileOpen && (
         <div
@@ -540,7 +654,7 @@ export default function RollMindPage() {
                   const score = profile.stats[stat];
                   const mod = Math.floor((score - 10) / 2);
                   const displayMod = mod >= 0 ? `+${mod}` : mod;
-                  
+
                   return (
                     <div key={stat} className={styles.formGroup}>
                       <label>{stat} ({displayMod})</label>

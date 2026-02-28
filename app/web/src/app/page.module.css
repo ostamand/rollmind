@@ -34,6 +34,46 @@
   z-index: 100;
 }
 
+.leftActions {
+  position: fixed;
+  left: 2rem;
+  top: 2rem;
+  display: flex;
+  gap: 0.5rem;
+  z-index: 100;
+}
+
+.infoContent {
+  color: #ccc;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.infoContent h3 {
+  color: var(--accent);
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.infoContent h3:first-child {
+  margin-top: 0;
+}
+
+.infoContent ul {
+  padding-left: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.infoContent li {
+  margin-bottom: 0.5rem;
+}
+
+.infoContent b {
+  color: white;
+}
+
 .actionButton {
   font-size: 1.5rem;
   opacity: 0.8;
