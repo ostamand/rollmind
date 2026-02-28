@@ -214,14 +214,14 @@ class VertexModelManager(BaseManager):
 
     async def stream_generate(self, prompt: str):
         if not self.endpoint_id:
-            yield "\n[RollMind API is online, but no Vertex AI Endpoint ID has been configured yet.]"
+            yield "\n[[SYSTEM_MESSAGE: RollMind API is online, but no Vertex AI Endpoint ID has been configured yet.]]"
             return
 
         # 1. Get Token
         try:
             token = await asyncio.to_thread(self._get_auth_token)
         except Exception as e:
-            yield f"\n[Authentication Error: {e}]"
+            yield f"\n[[SYSTEM_MESSAGE: Authentication Error: {e}]]"
             return
 
         # Use :rawPredict (POST) with stream=True. 
@@ -255,7 +255,10 @@ class VertexModelManager(BaseManager):
             if response.status_code != 200:
                 error_detail = response.text
                 print(f"❌ Vertex API Error ({response.status_code}): {error_detail}")
-                yield f"\n[Vertex AI Error: {response.status_code}]"
+                if response.status_code == 400:
+                    yield "\n[[SYSTEM_MESSAGE: The RollMind engine is currently offline or unavailable. Please try again in a few minutes.]]"
+                else:
+                    yield f"\n[[SYSTEM_MESSAGE: The RollMind engine encountered an issue (Error {response.status_code}).]]"
                 return
 
             # 3. Process the stream chunk by chunk
@@ -294,7 +297,7 @@ class VertexModelManager(BaseManager):
                     
         except Exception as e:
             print(f"❌ Vertex Stream Error: {e}")
-            yield "\n[The RollMind engine connection was interrupted.]"
+            yield "\n[[SYSTEM_MESSAGE: The connection to the RollMind engine was interrupted. Please check your network or try again.]]"
 
     def get_config(self):
         return {

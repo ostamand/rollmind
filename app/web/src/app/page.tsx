@@ -1,18 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp, Copy, Send, Settings, Trash2, X, ThumbsUp, ThumbsDown } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowUp,
+  Copy,
+  Send,
+  Settings,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+  X,
+} from "lucide-react";
 import styles from "./page.module.css";
 import DiceRoller from "./components/DiceRoller";
-import { 
-  fetchConfig, 
-  updateConfig, 
-  submitFeedback, 
-  submitConsultation, 
-  Config 
+import {
+  Config,
+  fetchConfig,
+  submitConsultation,
+  submitFeedback,
+  updateConfig,
 } from "../lib/api";
 
 interface Entry {
@@ -100,24 +110,42 @@ export default function RollMindPage() {
   // Stable components for ReactMarkdown to prevent unmounting when typing
   const markdownComponents = useMemo(() => ({
     code({ node, className, children, ...props }: any) {
-      const matchComplete = /language-dice-roll-complete/.exec(className || '');
-      const matchStreaming = /language-dice-roll-streaming/.exec(className || '');
-      
+      const matchComplete = /language-dice-roll-complete/.exec(className || "");
+      const matchStreaming = /language-dice-roll-streaming/.exec(
+        className || "",
+      );
+      const matchSystem = /language-system-message/.exec(className || "");
+
+      if (matchSystem) {
+        return (
+          <div className={styles.systemMessage}>
+            <AlertCircle
+              size={18}
+              color="#ffaa00"
+              style={{ marginTop: "2px" }}
+            />
+            <span className={styles.systemContent}>
+              {String(children).trim()}
+            </span>
+          </div>
+        );
+      }
+
       if (matchComplete || matchStreaming) {
         return (
-          <DiceRoller 
-            formula={String(children).trim()} 
-            isComplete={!!matchComplete} 
+          <DiceRoller
+            formula={String(children).trim()}
+            isComplete={!!matchComplete}
           />
         );
       }
-      
+
       return (
         <code className={className} {...props}>
           {children}
         </code>
       );
-    }
+    },
   }), []);
 
   const handleUpdateConfig = async (e: React.FormEvent) => {
@@ -144,20 +172,24 @@ export default function RollMindPage() {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       alert("Raw output copied to clipboard!");
-    }).catch(err => {
-      console.error('Failed to copy: ', err);
+    }).catch((err) => {
+      console.error("Failed to copy: ", err);
     });
   };
 
   const handleFeedback = async (id: string, isPositive: boolean) => {
-    const entry = history.find(e => e.id === id);
+    const entry = history.find((e) => e.id === id);
     if (!entry) return;
 
     try {
       await submitFeedback(entry.question, entry.answer, isPositive);
-      setHistory(prev => prev.map(e => 
-        e.id === id ? { ...e, feedback: isPositive ? "positive" : "negative" } : e
-      ));
+      setHistory((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? { ...e, feedback: isPositive ? "positive" : "negative" }
+            : e
+        )
+      );
     } catch (err) {
       console.error("Failed to send feedback", err);
     }
@@ -170,30 +202,44 @@ export default function RollMindPage() {
   };
 
   const preprocessMarkdown = (text: string) => {
-    // 0. Handle [ROLL] formula [/ROLL] or [ROLL] formula
-    // We convert it to a custom code block that ReactMarkdown components can handle.
-    // If it's missing the closing tag (still streaming), we mark it as incomplete.
-    let processed = text.replace(/\[ROLL\](.*?)\[\/ROLL\]/gs, (_, formula) => {
+    // 0. Handle [[SYSTEM_MESSAGE: ... ]]
+    let processed = text.replace(
+      /\[\[SYSTEM_MESSAGE: (.*?)\]\]/gs,
+      (_, msg) => {
+        return `\n\`\`\`system-message\n${msg.trim()}\n\`\`\`\n`;
+      },
+    );
+
+    // 1. Handle [ROLL] formula [/ROLL] or [ROLL] formula
+    processed = processed.replace(/\[ROLL\](.*?)\[\/ROLL\]/gs, (_, formula) => {
       return `\n\`\`\`dice-roll-complete\n${formula.trim()}\n\`\`\`\n`;
     });
-    
-    // Handle partial streaming [ROLL]
-    processed = processed.replace(/\[ROLL\](?!.*\`\`\`dice-roll)(.*)$/gs, (_, formula) => {
-      return `\n\`\`\`dice-roll-streaming\n${formula.trim()}\n\`\`\`\n`;
-    });
 
-    // 1. Handle double pipes as row/section breaks.
+    // Handle partial streaming [ROLL]
+    processed = processed.replace(
+      /\[ROLL\](?!.*\`\`\`dice-roll)(.*)$/gs,
+      (_, formula) => {
+        return `\n\`\`\`dice-roll-streaming\n${formula.trim()}\n\`\`\`\n`;
+      },
+    );
+
+    // 2. Handle double pipes as row/section breaks.
     processed = processed.replace(/\|\|/g, "\n");
 
-    // 2. Force newline before a table starts if it's attached to text
-    // Matches "Text:| Col 1 |" and turns it into "Text:\n| Col 1 |"
-    processed = processed.replace(/([^\n|])\s*(\|[^|\n]+\|[^|\n]+\|)/g, "$1\n$2");
+    // 3. Force newline before a table starts if it's attached to text
+    processed = processed.replace(
+      /([^\n|])\s*(\|[^|\n]+\|[^|\n]+\|)/g,
+      "$1\n$2",
+    );
 
-    // 3. Fix run-on lists where the model forgets newlines before bolded items or list markers
+    // 4. Fix run-on lists
     processed = processed.replace(/([^\n])\s*-\s+\*\*/g, "$1\n- **");
-    processed = processed.replace(/([^\n])\s+\*\*([^*]+)\*\*:/g, "$1\n- **$2**:");
+    processed = processed.replace(
+      /([^\n])\s+\*\*([^*]+)\*\*:/g,
+      "$1\n- **$2**:",
+    );
 
-    // 4. Identify "faux tables" vs real tables
+    // 5. Identify "faux tables" vs real tables
     const lines = processed.split("\n");
     const result: string[] = [];
 
@@ -206,21 +252,21 @@ export default function RollMindPage() {
       if (pipeCount >= 3) {
         const nextLine = lines[i + 1]?.trim() || "";
         const prevLine = result[result.length - 1]?.trim() || "";
-        const isTableSeparator = nextLine.includes("---") || prevLine.includes("---") || line.includes("---");
-        
-        // If it's not a table and has many pipes, convert to a list
+        const isTableSeparator = nextLine.includes("---") ||
+          prevLine.includes("---") || line.includes("---");
+
         if (!isTableSeparator && !line.startsWith("| ---")) {
-          const parts = line.split("|").map(p => p.trim()).filter(p => p.length > 0);
+          const parts = line.split("|").map((p) => p.trim()).filter((p) =>
+            p.length > 0
+          );
           if (parts.length > 2) {
-            parts.forEach(part => result.push("- " + part));
+            parts.forEach((part) => result.push("- " + part));
             continue;
           }
         }
       }
 
-      // Standard table row cleanup
       if (pipeCount >= 1) {
-        // Ensure row has start/end pipes if it looks like a table row
         if (!line.startsWith("|")) line = "| " + line;
         if (!line.endsWith("|")) line = line + " |";
 
@@ -228,20 +274,23 @@ export default function RollMindPage() {
         const nextLine = lines[i + 1]?.trim() || "";
         const nextLineIsSeparator = nextLine.includes("---");
         const prevLine = result[result.length - 1]?.trim() || "";
-        const prevLineHasPipes = prevLine.startsWith("|") && prevLine.endsWith("|");
+        const prevLineHasPipes = prevLine.startsWith("|") &&
+          prevLine.endsWith("|");
 
-        // Inject separator if this is a header and next line isn't a separator
-        if (!prevLineHasPipes && nextLineExists && !nextLineIsSeparator && !line.includes("---")) {
+        if (
+          !prevLineHasPipes && nextLineExists && !nextLineIsSeparator &&
+          !line.includes("---")
+        ) {
           result.push(line);
           const cols = (line.match(/\|/g) || []).length - 1;
           result.push("|" + Array(cols).fill(" --- |").join(""));
           continue;
         }
       }
-      
+
       result.push(line);
     }
-    
+
     return result.join("\n");
   };
 
@@ -292,14 +341,15 @@ export default function RollMindPage() {
               entry.id === entryId
                 ? {
                   ...entry,
-                  answer: "Error: The system is currently unreachable.",
+                  answer:
+                    "[[SYSTEM_MESSAGE: The RollMind engine is currently unreachable. Try again later.]]",
                   isStreaming: false,
                 }
                 : entry
             )
           );
           setIsLoading(false);
-        }
+        },
       });
     } catch (err) {
       console.error(err);
@@ -474,7 +524,8 @@ export default function RollMindPage() {
             <div className={styles.cardHeader}>
               <h2 className={styles.cardQuestion}>Inquiry: {entry.question}</h2>
               <div style={{ display: "flex", gap: "0.5rem" }}>
-                {process.env.NEXT_PUBLIC_HIDE_CONFIG !== "true" && entry.answer && (
+                {process.env.NEXT_PUBLIC_HIDE_CONFIG !== "true" &&
+                  entry.answer && (
                   <button
                     onClick={() => copyToClipboard(entry.answer)}
                     className={styles.copyButton}
@@ -497,7 +548,7 @@ export default function RollMindPage() {
               {entry.answer
                 ? (
                   <>
-                    <ReactMarkdown 
+                    <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={markdownComponents}
                     >
@@ -505,28 +556,33 @@ export default function RollMindPage() {
                     </ReactMarkdown>
                     {!entry.isStreaming && (
                       <div className={styles.cardFooter}>
-                        {!entry.feedback ? (
-                          <div className={styles.feedbackGroup}>
-                            <button 
-                              className={styles.feedbackButton} 
-                              onClick={() => handleFeedback(entry.id, true)}
-                              title="Helpful"
-                            >
-                              <ThumbsUp size={14} />
-                            </button>
-                            <button 
-                              className={styles.feedbackButton} 
-                              onClick={() => handleFeedback(entry.id, false)}
-                              title="Not helpful"
-                            >
-                              <ThumbsDown size={14} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className={styles.feedbackThanks}>
-                            {entry.feedback === "positive" ? "Helpful" : "Not helpful"} feedback received. Thank you!
-                          </div>
-                        )}
+                        {!entry.feedback
+                          ? (
+                            <div className={styles.feedbackGroup}>
+                              <button
+                                className={styles.feedbackButton}
+                                onClick={() => handleFeedback(entry.id, true)}
+                                title="Helpful"
+                              >
+                                <ThumbsUp size={14} />
+                              </button>
+                              <button
+                                className={styles.feedbackButton}
+                                onClick={() =>
+                                  handleFeedback(entry.id, false)}
+                                title="Not helpful"
+                              >
+                                <ThumbsDown size={14} />
+                              </button>
+                            </div>
+                          )
+                          : (
+                            <div className={styles.feedbackThanks}>
+                              {entry.feedback === "positive"
+                                ? "Helpful"
+                                : "Not helpful"} feedback received. Thank you!
+                            </div>
+                          )}
                       </div>
                     )}
                   </>
