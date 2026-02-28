@@ -13,11 +13,13 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  UserCircle,
   X,
 } from "lucide-react";
 import styles from "./page.module.css";
 import DiceRoller from "./components/DiceRoller";
 import {
+  CharacterProfile,
   Config,
   fetchConfig,
   submitConsultation,
@@ -43,11 +45,50 @@ const PROCESSING_MESSAGES = [
   "Invoking the spirits of the library",
 ];
 
+const CLASS_ABILITIES: Record<string, string> = {
+  Wizard: "INT",
+  Cleric: "WIS",
+  Druid: "WIS",
+  Ranger: "WIS",
+  Monk: "WIS",
+  Bard: "CHA",
+  Paladin: "CHA",
+  Sorcerer: "CHA",
+  Warlock: "CHA",
+  Fighter: "INT", // Eldritch Knight
+  Rogue: "INT", // Arcane Trickster
+  Barbarian: "CHA",
+};
+
+const DEFAULT_PROFILE: CharacterProfile = {
+  charClass: "Wizard",
+  level: 1,
+  stats: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
+  spellcasting: { ability: "INT", dc: 10, attackBonus: 2 },
+};
+
+const CLASSES = [
+  "Barbarian",
+  "Bard",
+  "Cleric",
+  "Druid",
+  "Fighter",
+  "Monk",
+  "Paladin",
+  "Ranger",
+  "Rogue",
+  "Sorcerer",
+  "Warlock",
+  "Wizard",
+];
+const STATS = ["STR", "DEX", "CON", "INT", "WIS", "CHA"] as const;
+
 export default function RollMindPage() {
   const [inquiry, setInquiry] = useState("");
   const [history, setHistory] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [processingMessage, setProcessingMessage] = useState(
     PROCESSING_MESSAGES[0],
@@ -67,7 +108,52 @@ export default function RollMindPage() {
     adapter_base_dir: "",
     endpoint_id: "",
   });
+  const [profile, setProfile] = useState<CharacterProfile>(DEFAULT_PROFILE);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load profile from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("rollmind_profile");
+    if (saved) {
+      try {
+        setProfile(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse saved profile", e);
+      }
+    }
+  }, []);
+
+  // Save profile to localStorage
+  useEffect(() => {
+    localStorage.setItem("rollmind_profile", JSON.stringify(profile));
+  }, [profile]);
+
+  // Sync spellcasting when class, level, or stats change
+  const syncSpellcasting = (updatedProfile: CharacterProfile) => {
+    const ability = CLASS_ABILITIES[updatedProfile.charClass] || "INT";
+    const score =
+      updatedProfile.stats[ability as keyof typeof updatedProfile.stats] || 10;
+    const mod = Math.floor((score - 10) / 2);
+    const prof = Math.floor((updatedProfile.level - 1) / 4) + 2;
+
+    return {
+      ...updatedProfile,
+      spellcasting: {
+        ability,
+        dc: 8 + prof + mod,
+        attackBonus: prof + mod,
+      },
+    };
+  };
+
+  const handleProfileChange = (
+    changes: Partial<CharacterProfile> | { stats: any },
+  ) => {
+    setProfile((prev) => {
+      const next = { ...prev, ...changes };
+      return syncSpellcasting(next);
+    });
+  };
 
   // Monitor scroll for Back to Top visibility
   useEffect(() => {
@@ -315,6 +401,8 @@ export default function RollMindPage() {
     let accumulatedAnswer = "";
 
     try {
+      const sendProfile = process.env.NEXT_PUBLIC_DISABLE_PROFILE !== "true" ? profile : undefined;
+      
       await submitConsultation(currentInquiry, {
         onToken: (token) => {
           accumulatedAnswer += token;
@@ -350,7 +438,7 @@ export default function RollMindPage() {
           );
           setIsLoading(false);
         },
-      });
+      }, sendProfile);
     } catch (err) {
       console.error(err);
       setIsLoading(false);
@@ -370,6 +458,13 @@ export default function RollMindPage() {
             priority
           />
           <div className={styles.headerActions}>
+            <button
+              className={styles.actionButton}
+              onClick={() => setIsProfileOpen(true)}
+              title="Character Profile"
+            >
+              <UserCircle size={24} color="var(--accent)" />
+            </button>
             <button
               className={styles.actionButton}
               onClick={clearHistory}
@@ -394,6 +489,136 @@ export default function RollMindPage() {
           D&D 2024
         </p>
       </header>
+
+      {isProfileOpen && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setIsProfileOpen(false)}
+        >
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2 className={styles.modalTitle}>Character Profile</h2>
+              <button
+                onClick={() => setIsProfileOpen(false)}
+                className={styles.closeModalButton}
+              >
+                <X size={24} color="var(--accent)" />
+              </button>
+            </div>
+            <div className={styles.configForm}>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup} style={{ flex: 2 }}>
+                  <label>Class</label>
+                  <select
+                    value={profile.charClass}
+                    onChange={(e) =>
+                      handleProfileChange({ charClass: e.target.value })}
+                    className={styles.select}
+                  >
+                    {CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className={styles.formGroup} style={{ flex: 1 }}>
+                  <label>Level</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={profile.level}
+                    onChange={(e) =>
+                      handleProfileChange({
+                        level: parseInt(e.target.value) || 1,
+                      })}
+                  />
+                </div>
+              </div>
+
+              <div className={styles.statsGrid}>
+                {STATS.map((stat) => {
+                  const score = profile.stats[stat];
+                  const mod = Math.floor((score - 10) / 2);
+                  const displayMod = mod >= 0 ? `+${mod}` : mod;
+                  
+                  return (
+                    <div key={stat} className={styles.formGroup}>
+                      <label>{stat} ({displayMod})</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="30"
+                        value={score}
+                        onChange={(e) =>
+                          handleProfileChange({
+                            stats: {
+                              ...profile.stats,
+                              [stat]: parseInt(e.target.value) || 10,
+                            },
+                          })}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className={styles.sectionDivider}>Spellcasting</div>
+              <div className={styles.formRow}>
+                <div className={styles.formGroup} style={{ flex: 1 }}>
+                  <label>Ability</label>
+                  <div className={styles.readOnlyValue}>
+                    {profile.spellcasting.ability}
+                  </div>
+                </div>
+                <div className={styles.formGroup} style={{ flex: 1 }}>
+                  <label>Save DC</label>
+                  <input
+                    type="number"
+                    value={profile.spellcasting.dc}
+                    onChange={(e) =>
+                      setProfile({
+                        ...profile,
+                        spellcasting: {
+                          ...profile.spellcasting,
+                          dc: parseInt(e.target.value) || 10,
+                        },
+                      })}
+                  />
+                </div>
+                <div className={styles.formGroup} style={{ flex: 1 }}>
+                  <label>Attack Bonus</label>
+                  <input
+                    type="number"
+                    value={profile.spellcasting.attackBonus}
+                    onChange={(e) =>
+                      setProfile({
+                        ...profile,
+                        spellcasting: {
+                          ...profile.spellcasting,
+                          attackBonus: parseInt(e.target.value) || 0,
+                        },
+                      })}
+                  />
+                </div>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  onClick={() => setProfile(DEFAULT_PROFILE)}
+                  className={styles.cancelButton}
+                >
+                  Reset
+                </button>
+                <button
+                  onClick={() => setIsProfileOpen(false)}
+                  className={styles.saveButton}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isConfigOpen && (
         <div

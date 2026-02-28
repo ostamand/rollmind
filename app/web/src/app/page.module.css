@@ -164,6 +164,57 @@
   color: #666;
 }
 
+.formRow {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.sectionDivider {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25rem;
+}
+
+.select {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  color: white;
+  font-size: 1rem;
+  width: 100%;
+  cursor: pointer;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.readOnlyValue {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 600;
+  width: 100%;
+  text-align: center;
+}
+
 .modalActions {
   display: flex;
   gap: 1rem;

@@ -11,6 +11,24 @@ export interface Config {
   location: string;
 }
 
+export interface CharacterProfile {
+  charClass: string;
+  level: number;
+  stats: {
+    STR: number;
+    DEX: number;
+    CON: number;
+    INT: number;
+    WIS: number;
+    CHA: number;
+  };
+  spellcasting: {
+    ability: string;
+    dc: number;
+    attackBonus: number;
+  };
+}
+
 export interface UpdateConfigPayload {
   model_id?: string;
   adapter_path?: string;
@@ -60,12 +78,16 @@ export interface StreamCallbacks {
   onError: (error: any) => void;
 }
 
-export const submitConsultation = async (prompt: string, callbacks: StreamCallbacks): Promise<void> => {
+export const submitConsultation = async (
+  prompt: string, 
+  callbacks: StreamCallbacks,
+  profile?: CharacterProfile
+): Promise<void> => {
   try {
     const response = await fetch(`${API_BASE_URL}/consult`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, profile }),
     });
 
     if (!response.ok) throw new Error("Connection failed.");

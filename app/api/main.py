@@ -40,8 +40,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class Stats(BaseModel):
+    STR: int
+    DEX: int
+    CON: int
+    INT: int
+    WIS: int
+    CHA: int
+
+class Spellcasting(BaseModel):
+    ability: str
+    dc: int
+    attackBonus: int
+
+class CharacterProfile(BaseModel):
+    charClass: str
+    level: int
+    stats: Stats
+    spellcasting: Spellcasting
+
 class ConsultationRequest(BaseModel):
     prompt: str
+    profile: Optional[CharacterProfile] = None
 
 class FeedbackRequest(BaseModel):
     inquiry: str
@@ -86,9 +106,32 @@ async def update_config(config: ConfigUpdate, _: None = Depends(verify_config_ac
 
 @app.post("/consult")
 async def consult(request: ConsultationRequest):
+    # Build character profile string if provided, matching training data format
+    profile_prefix = ""
+    if request.profile:
+        p = request.profile
+        s = p.stats
+        sc = p.spellcasting
+        
+        # Helper to format mods
+        def mod(val):
+            m = (val - 10) // 2
+            return f"{m:+}"
+
+        stats_str = f"STR {s.STR} ({mod(s.STR)}), DEX {s.DEX} ({mod(s.DEX)}), CON {s.CON} ({mod(s.CON)}), INT {s.INT} ({mod(s.INT)}), WIS {s.WIS} ({mod(s.WIS)}), CHA {s.CHA} ({mod(s.CHA)})"
+        
+        profile_prefix = f"Character Profile: {p.charClass} Level {p.level}. Stats: {stats_str}.\n"
+        profile_prefix += f"Spellcasting: Ability {sc.ability}, DC {sc.dc}, Attack Bonus {sc.attackBonus:+}.\n\n"
+
     # Prepare the Gemma-specific instruction prompt
-    full_prompt = f"<start_of_turn>user\n{request.prompt}<end_of_turn>\n<start_of_turn>model\n"
+    full_prompt = f"<start_of_turn>user\n{profile_prefix}{request.prompt}<end_of_turn>\n<start_of_turn>model\n"
     
+    # Print prompt for debugging when in local mode
+    if manager.mode == "local":
+        print("\n--- [LOCAL INFERENCE PROMPT] ---")
+        print(repr(full_prompt))
+        print("--- [END PROMPT] ---\n")
+
     async def event_generator():
         try:
             async for token in manager.stream_generate(full_prompt):
