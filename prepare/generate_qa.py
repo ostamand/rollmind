@@ -86,7 +86,7 @@ TEXT SECTION:
 def main():
     parser = argparse.ArgumentParser(description="Generate Q&A pairs using Vertex AI Gemini")
     parser.add_argument("--input_file", type=str, default="data/step1/full_chunks.jsonl", help="Input JSONL chunks file")
-    parser.add_argument("--output_dir", type=str, default="data/step2", help="Directory to save output QA files")
+    parser.add_argument("--output_dir", type=str, default="data/step2/v2/qa", help="Directory to save output QA files")
     parser.add_argument("--project", type=str, default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="Google Cloud Project ID")
     parser.add_argument("--location", type=str, default=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"), help="Google Cloud Region")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of chunks to process (for testing)")

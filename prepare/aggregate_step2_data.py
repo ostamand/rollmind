@@ -15,8 +15,8 @@ def get_sampling_percentage(filename):
 
 def main():
     parser = argparse.ArgumentParser(description="Aggregate and downsample Step 2 data based on _AX_ prefixes.")
-    parser.add_argument("--input_dir", type=str, default="data/step2", help="Directory to search for source JSONL files")
-    parser.add_argument("--output_dir", type=str, default="data/step2", help="Directory to save output files")
+    parser.add_argument("--input_dir", type=str, default="data/step2/v2", help="Directory to search for source JSONL files")
+    parser.add_argument("--output_dir", type=str, default="data/step2/v2", help="Directory to save output files")
     parser.add_argument("--val_ratio", type=float, default=0.1, help="Ratio of validation data (default: 0.1)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
@@ -44,6 +44,7 @@ def main():
     all_train = []
     all_val = []
     all_raw = []
+    file_stats = []
 
     # 2. Process each file
     for file_path, percentage in source_files:
@@ -81,8 +82,16 @@ def main():
         all_train.extend(file_train)
         all_val.extend(file_val)
         all_raw.extend(sampled_lines)
+        
+        file_stats.append({
+            "file": os.path.basename(file_path),
+            "total_raw": total_in_file,
+            "sampled": len(sampled_lines),
+            "percentage_applied": percentage
+        })
 
-    print(f"\nTotal aggregated samples: {len(all_raw)}")
+    total_aggregated = len(all_raw)
+    print(f"\nTotal aggregated samples: {total_aggregated}")
 
     # 3. Save raw_qa.jsonl
     raw_file = os.path.join(args.output_dir, "raw_qa.jsonl")
@@ -107,9 +116,29 @@ def main():
         for s in all_val:
             f.write(s + "\n")
 
+    # 6. Final Stats Calculation & Saving
     print(f"\nFinal dataset split (Stratified):")
     print(f"  - Train: {len(all_train)} samples -> {train_file}")
     print(f"  - Val:   {len(all_val)} samples -> {val_file}")
+
+    print(f"\nContribution Summary:")
+    summary = {
+        "total_samples": total_aggregated,
+        "train_samples": len(all_train),
+        "val_samples": len(all_val),
+        "files": []
+    }
+
+    for stat in file_stats:
+        contribution_pct = (stat["sampled"] / total_aggregated * 100) if total_aggregated > 0 else 0
+        stat["contribution_percentage"] = round(contribution_pct, 2)
+        summary["files"].append(stat)
+        print(f"  - {stat['file']}: {stat['contribution_percentage']}% ({stat['sampled']} samples)")
+
+    stats_file = os.path.join(args.output_dir, "aggregation_stats.json")
+    with open(stats_file, 'w', encoding='utf-8') as f:
+        json.dump(summary, f, indent=4)
+    print(f"\nSaved aggregation stats to {stats_file}")
 
 if __name__ == "__main__":
     main()

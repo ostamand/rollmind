@@ -74,6 +74,17 @@ Generates targeted, high-level Q&A pairs based on specific player personas (e.g.
 python3 prepare/generate_scenarios.py --project your-project-id
 ```
 
+### Method C: Roll-Specific Data Generation
+Generates training data for a D&D assistant that can output dice rolls using a custom `[ROLL]XdY+Z[/ROLL]` tag, including refusals for impossible actions.
+
+```bash
+# 1. Generate successful roll examples
+python3 prepare/generate_rolls.py --project your-project-id
+
+# 2. Generate roll-specific refusals (e.g., Level 8 spell at level 1)
+python3 prepare/generate_roll_refusals.py --project your-project-id
+```
+
 ## 4. Step 3: Continued Pre-training (Domain Adaptation)
 
 Train the model on the full text of the manual (`full_chunks.jsonl`) to ensure 100% rule coverage.

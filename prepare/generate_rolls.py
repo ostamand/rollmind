@@ -26,10 +26,11 @@ SPELL DATA:
 
 --- INSTRUCTIONS ---
 1. Generate EXACTLY 3-4 natural conversation examples (User/Model pairs) for the spell "{spell_name}".
-2. USER INPUT: The user should issue a direct command or action that EXPLICITLY includes the spell name "{spell_name}".
+2. USER INPUT: A SHORT, direct command or action that EXPLICITLY includes the spell name "{spell_name}".
+   - Keep it under 10 words.
    - Use NATURAL CASING for the spell name (e.g., "{spell_name}" or "{spell_name.lower()}"). AVOID ALL CAPS.
    - Good: "I cast {spell_name} at 4th level", "Cast {spell_name} on the target", "I use {spell_name}!".
-   - Avoid: "Attack with it", "Cast at level 3", "Blast them". The spell name MUST be present.
+   - Avoid: Long roleplay descriptions, fluff, or multi-sentence context. The spell name MUST be present.
 3. MODEL RESPONSE: The response MUST:
     - Briefly explain the reasoning/math (e.g., bonuses, DC, or upcasting logic) before the [ROLL] tag so the user understands the calculation.
     - Output the [ROLL] tag for the relevant check, save, attack, or damage.

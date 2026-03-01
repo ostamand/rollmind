@@ -71,7 +71,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Toggle Vertex AI Endpoint ON/OFF to manage costs")
     parser.add_argument("action", choices=["on", "off"], help="Action to perform: 'on' or 'off'")
     parser.add_argument("--name", type=str, default="rollmind-gemma-7b_endpoint", help="Display name of the endpoint")
-    parser.add_argument("--model_name", type=str, help="Display name of the model (if different from endpoint name)")
+    parser.add_argument("--model_name", default="rollmind-gemma-7b", type=str, help="Display name of the model")
     parser.add_argument("--project", type=str, default=os.getenv("GOOGLE_CLOUD_PROJECT"))
     parser.add_argument("--location", type=str, default="us-east4")
 
