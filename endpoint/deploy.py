@@ -61,7 +61,7 @@ def deploy_model(project, location, model_display_name, gcs_uri, local_path=None
             "python3", "-m", "vllm.entrypoints.openai.api_server",
             "--host=0.0.0.0",
             "--port=8080",
-            "--max-model-len=1024", 
+            "--max-model-len=512", 
             "--tensor-parallel-size=1"
         ],
         serving_container_predict_route="/v1/chat/completions",
@@ -108,6 +108,7 @@ def deploy_model(project, location, model_display_name, gcs_uri, local_path=None
     print(f"Resource Name: {endpoint.resource_name}")
     return endpoint
 
+# python endpoint/deploy.py --local_path ./merged_model --gcs_path gs://ostamand/rollmind/models/rollmind-v2
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Upload and Deploy model to Vertex AI")
     parser.add_argument("--project", type=str, default=os.getenv("GOOGLE_CLOUD_PROJECT"))
