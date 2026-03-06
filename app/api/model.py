@@ -102,8 +102,15 @@ class LocalModelManager(BaseManager):
             print(f"Loading local model {self.model_id}...")
             self.is_loading = True
             try:
+                # Resolve local path if it exists
+                model_path = self.model_id
+                local_files_only = False
+                if os.path.exists(model_path):
+                    model_path = os.path.abspath(model_path)
+                    local_files_only = True
+                    print(f"Using local model path: {model_path}")
+
                 compute_dtype = torch.bfloat16
-                from transformers import BitsAndBytesConfig
                 bnb_config = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_quant_type="nf4",
@@ -112,22 +119,42 @@ class LocalModelManager(BaseManager):
                     llm_int8_enable_fp32_cpu_offload=True
                 )
 
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    model_path, 
+                    local_files_only=local_files_only
+                )
                 self.tokenizer.pad_token = self.tokenizer.eos_token
 
                 base_model = AutoModelForCausalLM.from_pretrained(
-                    self.model_id,
+                    model_path,
                     quantization_config=bnb_config,
                     device_map="auto",
                     max_memory={0: MAX_GPU_MEMORY, "cpu": "32GiB"},
                     torch_dtype=compute_dtype,
                     low_cpu_mem_usage=True,
-                    attn_implementation="sdpa"
+                    attn_implementation="sdpa",
+                    local_files_only=local_files_only
                 )
 
-                if self.adapter_path and os.path.exists(self.adapter_path):
-                    print(f"Applying adapters from {self.adapter_path}...")
-                    self.model = PeftModel.from_pretrained(base_model, self.adapter_path)
+                if self.adapter_path:
+                    # Try direct path first, then relative to base dir
+                    actual_adapter_path = self.adapter_path
+                    if not os.path.exists(actual_adapter_path) and self.adapter_base_dir:
+                        potential_path = os.path.join(self.adapter_base_dir, self.adapter_path)
+                        if os.path.exists(potential_path):
+                            actual_adapter_path = potential_path
+
+                    if os.path.exists(actual_adapter_path):
+                        actual_adapter_path = os.path.abspath(actual_adapter_path)
+                        print(f"Applying adapters from {actual_adapter_path}...")
+                        self.model = PeftModel.from_pretrained(
+                            base_model, 
+                            actual_adapter_path,
+                            local_files_only=True
+                        )
+                    else:
+                        print(f"Warning: Adapter path {self.adapter_path} not found. Using base model.")
+                        self.model = base_model
                 else:
                     self.model = base_model
 

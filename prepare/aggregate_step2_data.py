@@ -4,6 +4,7 @@ import random
 import argparse
 import re
 from glob import glob
+from collections import defaultdict
 
 def get_sampling_percentage(filename):
     """Extracts X from _AX_ prefix in filename."""
@@ -44,10 +45,22 @@ def main():
     all_train = []
     all_val = []
     all_raw = []
-    file_stats = []
+    
+    # Track stats by folder
+    folder_stats = defaultdict(lambda: {
+        "total_raw": 0,
+        "sampled": 0,
+        "train": 0,
+        "val": 0,
+        "files": []
+    })
 
     # 2. Process each file
     for file_path, percentage in source_files:
+        # Determine relative parent folder path for grouping
+        rel_folder = os.path.relpath(os.path.dirname(file_path), args.input_dir)
+        folder_key = rel_folder if rel_folder != "." else "root"
+        
         with open(file_path, 'r', encoding='utf-8') as f:
             valid_lines = []
             for line in f:
@@ -77,18 +90,21 @@ def main():
         file_val = sampled_lines[:val_size]
         file_train = sampled_lines[val_size:]
 
-        print(f"  - {os.path.basename(file_path)}: total {total_in_file}, sampled {len(sampled_lines)} ({percentage}%) -> {len(file_train)} train, {len(file_val)} val")
+        # Aggregate into folder stats
+        folder_stats[folder_key]["total_raw"] += total_in_file
+        folder_stats[folder_key]["sampled"] += len(sampled_lines)
+        folder_stats[folder_key]["train"] += len(file_train)
+        folder_stats[folder_key]["val"] += len(file_val)
+        folder_stats[folder_key]["files"].append({
+            "name": os.path.basename(file_path),
+            "total_raw": total_in_file,
+            "sampled": len(sampled_lines),
+            "percentage": percentage
+        })
         
         all_train.extend(file_train)
         all_val.extend(file_val)
         all_raw.extend(sampled_lines)
-        
-        file_stats.append({
-            "file": os.path.basename(file_path),
-            "total_raw": total_in_file,
-            "sampled": len(sampled_lines),
-            "percentage_applied": percentage
-        })
 
     total_aggregated = len(all_raw)
     print(f"\nTotal aggregated samples: {total_aggregated}")
@@ -121,19 +137,40 @@ def main():
     print(f"  - Train: {len(all_train)} samples -> {train_file}")
     print(f"  - Val:   {len(all_val)} samples -> {val_file}")
 
-    print(f"\nContribution Summary:")
+    print(f"\nContribution Summary (by Parent Folder):")
     summary = {
         "total_samples": total_aggregated,
         "train_samples": len(all_train),
         "val_samples": len(all_val),
-        "files": []
+        "quick_summary": {},
+        "folders": []
     }
 
-    for stat in file_stats:
-        contribution_pct = (stat["sampled"] / total_aggregated * 100) if total_aggregated > 0 else 0
-        stat["contribution_percentage"] = round(contribution_pct, 2)
-        summary["files"].append(stat)
-        print(f"  - {stat['file']}: {stat['contribution_percentage']}% ({stat['sampled']} samples)")
+    # Sort folders for consistent output
+    for folder_key in sorted(folder_stats.keys()):
+        stats = folder_stats[folder_key]
+        contribution_pct = round((stats["sampled"] / total_aggregated * 100), 2) if total_aggregated > 0 else 0
+        
+        summary["quick_summary"][folder_key] = contribution_pct
+        
+        folder_summary = {
+            "folder": folder_key,
+            "total_raw": stats["total_raw"],
+            "sampled": stats["sampled"],
+            "train": stats["train"],
+            "val": stats["val"],
+            "contribution_percentage": contribution_pct,
+            "files": stats["files"]
+        }
+        summary["folders"].append(folder_summary)
+        
+        print(f"  - {folder_key}/: {contribution_pct}% ({stats['sampled']} samples from {len(stats['files'])} files)")
+        print(f"    -> {stats['train']} train, {stats['val']} val")
+
+    # Additional Quick Summary for console
+    print(f"\nQuick Summary:")
+    for folder, pct in summary["quick_summary"].items():
+        print(f"  {folder}/: {pct}%")
 
     stats_file = os.path.join(args.output_dir, "aggregation_stats.json")
     with open(stats_file, 'w', encoding='utf-8') as f:
