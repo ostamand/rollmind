@@ -1,63 +1,34 @@
-# Plan: Implementing Functional Dice Rolls ([ROLL])
+# Implementation: Functional Dice Rolls ([ROLL])
 
-This document outlines the strategy for evolving Rollmind from a D&D knowledge assistant into a functional game assistant capable of calculating and outputting dice rolls based on character context.
+This document details the successful implementation of the functional dice roll system, which allows RollMind to calculate and output specific dice rolls based on character context.
 
-## 1. Objective
-Enable the model to ingest character details and output specific dice rolls for requested actions (initially focusing on **Spells**) using a custom tag: `[ROLL]XdY+Z[/ROLL]`. The model will perform the calculation (e.g., adding Proficiency and Ability modifiers) internally based on the provided character context.
+## 1. Objective Achieved
+The model can now ingest character details (Class, Level, Stats) and output mechanical actions using a custom tag: `[ROLL]XdY+Z[/ROLL]`. This system ensures that dice results are mathematically accurate and grounded in the rules, while the actual "roll" is performed cryptographically by the application.
 
-## 2. Core Strategy: Multi-Task Step 2
-I recommend **combining** this functionality into **Step 2 (Instruction Tuning)** rather than a separate Step 3.
+## 2. The Tag System
+RollMind uses a specific XML-style tag for all mechanical checks:
+- **Format:** `[ROLL]XdY+Z[/ROLL]`
+- **Examples:** 
+  - `[ROLL]8d6[/ROLL]` (Fireball damage)
+  - `[ROLL]1d20+7[/ROLL]` (Spell attack with +7 bonus)
+  - `[ROLL]1d20+2[/ROLL]` (Wisdom saving throw for a target)
 
-### Reasoning:
-*   **Prevent Regression:** Training on rolls only could cause "catastrophic forgetting" of general knowledge.
-*   **Contextual Awareness:** The model needs to use the knowledge learned in Step 1 to determine *which* dice to roll.
-*   **Format Consistency:** The model learns that `[ROLL]` is part of its standard toolkit.
+## 3. Training & Data Generation
+The functionality was baked into **Step 2 (Instruction Alignment)** using a dedicated synthetic pipeline:
+- **Source Truth:** `prepare/generate_rolls.py` used the raw spell markdown files from the PHB 2024 as the source of truth for dice formulas.
+- **Context Injection:** Every training example included a randomized **Character Profile**. This taught the model to:
+  - Add the correct **Ability Modifier** and **Proficiency Bonus** to d20 rolls.
+  - Apply **Upcasting** logic (e.g., adding 1d6 per slot level above base).
+  - Apply **Cantrip Scaling** (jumps at levels 5, 11, and 17).
 
-## 3. Dataset Generation (`prepare/generate_rolls.py`)
+## 4. Application Integration
+The RollMind Web App (`app/web/`) features a specialized `DiceRoller` component:
+1.  **Interception:** The frontend identifies `[ROLL]` tags in the model's streaming response.
+2.  **Animation:** A gold-themed dice icon spins while the tag is being "processed."
+3.  **Cryptographic Roll:** The system performs a true random roll based on the formula provided in the tag.
+4.  **Display:** The final result is displayed with a full breakdown (e.g., `31 = (4+6+5+2+6+1+4+3)`) to ensure transparency and excitement.
 
-Generating accurate rolls requires grounding the model in the **natural language context** and rules of the spell directly from its source documentation.
-
-### A. Source Data (`data/spells/*.md`)
-We will use individual Markdown files for each spell, where the filename is the spell name (e.g., `Fireball.md`). Each file contains the full 2024 Player's Handbook entry for that spell.
-
-### B. The Character Profile (Automatic Injection)
-Every training example includes a profile. In the final app, this is injected automatically before the user prompt.
-*   **Format:**
-    ```text
-    Character Profile: [Class] [Level]. Stats: STR [X] (+M)... 
-    Spellcasting: Ability [Stat], DC [DC], Attack Bonus [Bonus].
-    ```
-*   **Generation:** `prepare/generate_rolls.py` will programmatically generate random valid profiles to provide training variance.
-
-### C. Script Logic: Context-Driven Generation
-The generation script uses the raw Markdown as the source of truth for both flavor and mechanics:
-
-1.  **Selection:** Pick a random spell file from `data/spells/`.
-2.  **Context Loading:** Read the full Markdown content.
-3.  **Prompting:** Feed the **Full Spell Markdown + Profile** to Gemini. The prompt instructs Gemini to:
-    *   Identify the correct dice/scaling from the text.
-    *   Apply the modifiers from the Character Profile.
-    *   Generate a natural conversation including the correctly calculated `[ROLL]` tags.
-4.  **Completion:** Gemini generates a response grounded entirely in the provided Markdown.
-    *   **User:** "I cast Fireball at 4th level!"
-    *   **Model:** "You unleash a 4th-level Fireball. Targets must make a DC 15 Dexterity save. Damage: [ROLL]9d6[/ROLL] fire."
-
-### D. Advanced Logic & Edge Cases
-The prompt for the generator will explicitly handle D&D mechanics:
-1.  **Upcasting:** Instructions on how to interpret "At Higher Levels" sections in the Markdown.
-2.  **Cantrip Scaling:** Logic for scaling damage at levels 5, 11, and 17 as described in the text.
-3.  **Multiple Rolls:** Instructions to output multiple `[ROLL]` tags for spells with multiple targets or beams (e.g., *Eldritch Blast*).
-
-## 4. Technical Implementation Steps
-
-### Phase 1: Training Pipeline Updates
-*   **Data Mix:** Step 2 will now load a balanced mix of `train_qa.jsonl` and the new `train_rolls.jsonl` (generated from the spell markdown files) to ensure the model maintains its general knowledge while learning the new rolling functionality.
-
-### Phase 2: Inference Refinement
-Update `inference.py` to support a `--character` flag which automatically formats the prompt to include the profile header. This ensures the model always has the necessary context to calculate rolls during interactive sessions.
-
-## 5. Implementation Roadmap
-1.  **Spell Preparation:** Split source spell documentation into individual files in `data/spells/*.md`.
-2.  **Persona Utility:** Write a Python function to generate random character stat blocks.
-3.  **Roll Generator:** Implement `prepare/generate_rolls.py` (Providing Markdown context + Character Profile to Gemini).
-4.  **Fine-tuning:** Run Step 2 with the mixed dataset.
+## 5. Why This Implementation Works
+- **No Hallucinations:** Generic LLMs often "hallucinate" high numbers (natural 20s) to please the user. RollMind only provides the formula; the app provides the luck.
+- **Contextual Accuracy:** Because the model was trained on the PHB 2024, it knows that *Magic Missile* is 1d4+1 and *Fireball* is 8d6 without needing external lookups during inference.
+- **Character Synergy:** The model uses the specific stats of the active character profile to calculate bonuses, making the assistant feel like a true companion to the player's unique character.

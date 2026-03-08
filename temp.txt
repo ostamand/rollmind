@@ -1,5 +1,0 @@
-> Right now I feel that our qa questions are not enough since they are created chuncks by chunks they do 
-   not allow for more general questions that a typical player of d&d would ask. for example: I just went  
-   went from level 1 to level 2 as a cleric, what is new? I feel we have to create an additional Q&A      
-   dataset with questions that a typical player would ask. can you help me recommend an approcha. for     
-   context this is our current training approcach: @FINETUNING_WORKFLOW.md  

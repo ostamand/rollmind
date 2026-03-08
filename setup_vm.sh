@@ -3,57 +3,42 @@
 
 set -e
 
-echo "--- 1. Installing System Dependencies & GitHub CLI ---"
-sudo apt-get update && sudo apt-get install -y git git-lfs python3-pip python3-venv curl
-# Install GitHub CLI
-if ! command -v gh &> /dev/null; then
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-    sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-    sudo apt update
-    sudo apt install gh -y
-fi
+echo "--- 1. GitHub CLI ---"
 
-echo "--- 2. GitHub Authentication & Clone ---"
-if ! gh auth status &> /dev/null; then
-    echo "Please login to GitHub to clone the private repository:"
-    gh auth login
-fi
+(type -p wget >/dev/null || (apt update && apt install wget -y)) \
+	&& mkdir -p -m 755 /etc/apt/keyrings \
+	&& out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+	&& cat $out | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+	&& chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+	&& mkdir -p -m 755 /etc/apt/sources.list.d \
+	&& echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+	&& apt update \
+	&& apt install gh -y
 
-read -p "Enter the repository name (e.g., username/rollmind): " REPO_NAME
-if [ ! -d "rollmind" ] && [ ! -z "$REPO_NAME" ]; then
-    gh repo clone "$REPO_NAME" rollmind
-    cd rollmind
-fi
+apt-get update
+apt-get install ca-certificates gnupg curl
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+apt-get update && apt-get install google-cloud-cli
+gcloud config set project ostamand-264a1
 
-echo "--- 3. Setting up Python Virtual Environment ---"
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
+# Download and install nvm:
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
+# in lieu of restarting the shell
+\. "$HOME/.nvm/nvm.sh"
+# Download and install Node.js:
+nvm install 24
+# Verify the Node.js version:
+node -v # Should print "v24.14.0".
+# Verify npm version:
+npm -v # Should print "11.9.0".
+
+cd /workspace
+gh repo clone ostamand/rollmind
+cd rollind
+python -m venv venv
 pip install -r requirements.txt
+pip install --upgrade huggingface_hub
+pip install google-cloud-storage
 
-# Optional but highly recommended for 24GB+ GPUs (e.g., A10G, RTX 3090/4090)
-echo "--- 3. Installing Performance Optimizations ---"
-pip install flash-attn --no-build-isolation || echo "Flash Attention installation failed, continuing with SDPA..."
-
-echo "--- 4. Authentication Check ---"
-if ! command -v gcloud &> /dev/null; then
-    echo "gcloud not found. Please install it if you need to download data from GCS."
-else
-    echo "Checking gcloud authentication..."
-    gcloud auth application-default login --no-launch-browser
-fi
-
-echo "Hugging Face login (Required for Gemma):"
-huggingface-cli login
-
-echo "--- 5. Data Synchronization ---"
-read -p "Enter GCS Bucket name (leave empty to skip): " BUCKET_NAME
-if [ ! -z "$BUCKET_NAME" ]; then
-    read -p "Enter GCS prefix (default: data/): " GCS_PREFIX
-    GCS_PREFIX=${GCS_PREFIX:-data/}
-    python3 download_data.py --bucket "$BUCKET_NAME" --prefix "$GCS_PREFIX" --out ./data
-fi
-
-echo "--- Setup Complete! ---"
-echo "To start training, remember to activate the environment: source venv/bin/activate"
+hf auth login

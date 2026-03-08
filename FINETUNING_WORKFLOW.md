@@ -1,63 +1,42 @@
-# Gemma Fine-Tuning Workflow: D&D Manual
+# RollMind Fine-Tuning Workflow
 
-This document outlines a two-step process for fine-tuning a Gemma-it model (2b or 7b) on a 12GB GPU to accurately answer questions about a D&D manual.
+This document outlines the professional two-step process used to transform Google's Gemma models into **RollMind**, a domain-expert D&D 2024 rules engine.
 
 ## 1. Strategy Overview
 
-We use a two-step approach to maximize accuracy:
-1.  **Domain Adaptation (Continued Pre-training):** Train on raw markdown text to familiarize the model with D&D terminology and rules. No instruction template is used here.
-2.  **Instruction Fine-Tuning (SFT):** Train on Question-Answer pairs using the official Gemma template to teach the model how to provide helpful, structured responses based on its new knowledge.
+We use a two-step approach to maximize both rule retention and conversational utility:
+1.  **Domain Adaptation (Continued Pre-training):** Training on 100% of the raw PHB markdown text to internalize the "Rules as Written" (RAW).
+2.  **Instruction Alignment (SFT):** Training on a diverse, multi-task synthetic dataset to teach the model how to act as a character-aware assistant and use the `[ROLL]` tag system.
 
-## 2. Environment Setup
+## 2. Step 1: Domain Adaptation (Rule Learning)
 
-Install the core Hugging Face libraries. We use `bitsandbytes` for 4-bit quantization (QLoRA) to fit the model in 12GB VRAM.
+### Data Preparation (`prepare/prepare_step1_data.py`)
+The 2024 Player's Handbook is processed into semantic chunks of ~3000 characters.
+-   **Context Preservation:** Header hierarchies (#, ##, ###) are prepended to every chunk so the model never loses track of the current topic (e.g., knowing it's reading about "Grappled" within the "Conditions" section).
+-   **Full Coverage:** We train on 100% of these chunks to ensure no rule is left behind.
 
-```bash
-pip install -U transformers peft accelerate bitsandbytes datasets trl
-```
+### Training Configuration (`train/step1/`)
+-   **Models:** Gemma 1.1 7B or Gemma 3 12B.
+-   **LoRA Targets:** All linear modules (`q_proj`, `v_proj`, `gate_proj`, `up_proj`, etc.) for deep adaptation.
+-   **Rank:** High rank (r=64 or r=128) used to capture the complexity of the ruleset.
 
-## 3. Step 1: Domain Adaptation (Raw Text)
+## 3. Step 2: Instruction Alignment (The Assistant)
 
-### Data Preparation
-Chunk the markdown into logical sections.
-*   **Format:** JSONL with a `"text"` field containing raw text.
-*   **Chunk Size:** ~1024 tokens.
-*   **Goal:** Next token prediction (learning the domain).
+### Multi-Task Dataset (`prepare/aggregate_step2_data.py`)
+We use a stratified mix of synthetic data generated via **Vertex AI (Gemini 3 Flash Preview)**:
+-   **Contextual QA:** 5-7 QA pairs per PHB chunk, injected with randomized **Character Profiles**.
+-   **Functional Rolls:** Dedicated examples of `[ROLL]` tags with upcasting and scaling logic.
+-   **Table Scenarios:** Real-world gameplay situations like "Leveling Up" or "Multiclassing".
+-   **Refusals:** Teaching the model to stay in its domain and decline impossible actions.
 
-### Training Script Configuration
-The model is loaded in 4-bit with `nf4` quantization. LoRA is applied to all linear modules for maximum parameter efficiency.
+### Training Strategy (`train/step2/`)
+-   **Adapter Loading:** We load the base model and apply the LoRA weights from Step 1 as the starting point.
+-   **Completion-Only Loss:** We mask the user prompt so the model only learns to optimize the assistant's responses.
+-   **Hyperparameters:** Lower learning rate (e.g., `4e-5`) and higher weight decay to maintain stability.
 
-```python
-model_id = "google/gemma-2b-it"
+## 4. Hardware Optimization
 
-lora_config = LoraConfig(
-    r=16,
-    lora_alpha=32,
-    target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
-    task_type="CAUSAL_LM",
-)
-```
-
-## 4. Step 2: Instruction Fine-Tuning (Q&A)
-
-### Data Preparation
-Generate synthetic Q&A pairs and format them using the **Official Gemma Template**.
-*   **Template:**
-    ```
-    <start_of_turn>user
-    What is Armor Class?<end_of_turn>
-    <start_of_turn>model
-    Armor Class (AC) represents how hard it is for opponents to land a damaging blow on you...<end_of_turn>
-    ```
-
-### Training Strategy
-1.  **Base:** Load `google/gemma-2b-it` and the LoRA adapters from Step 1.
-2.  **Refinement:** Train on the Q&A dataset with a lower learning rate (e.g., `5e-5`).
-3.  **Stability:** This step ensures the model retains its "Assistant" persona while utilizing the D&D knowledge.
-
-## 5. Hardware Optimization (12GB VRAM)
-
-*   **QLoRA (4-bit):** Essential for fitting the model and maintaining performance.
-*   **Gradient Accumulation:** Use `gradient_accumulation_steps=8` with `batch_size=1` to simulate a larger effective batch size.
-*   **Precision:** Use `bf16=True` if your GPU supports it (e.g., RTX 30/40 series), otherwise use `fp16=True`.
-*   **Memory Efficiency:** Use `paged_adamw_32bit` optimizer to save VRAM.
+-   **24GB VRAM:** Optimized for L4 or RTX 3090/4090 GPUs.
+-   **QLoRA (4-bit):** Uses `bitsandbytes` NormalFloat4 quantization.
+-   **Memory Management:** `gradient_checkpointing` and `adamw_8bit` optimizer are used to fit the 12B model comfortably.
+-   **Flash Attention:** Uses `sdpa` implementation for faster processing.

@@ -1,3 +1,5 @@
+![RollMind Banner](assets/RollMind-banner.jpg)
+
 # 🔮 RollMind: The Ultimate D&D 2024 AI Companion
 
 RollMind isn't just another chatbot. It is a specialized, domain-expert Large Language Model (Gemma) fine-tuned specifically on the **2024 D&D Player's Handbook**. 
@@ -39,21 +41,27 @@ Pre-trained adapters and merged models for RollMind are available on the Hugging
 ## 🛠️ The Pipeline
 
 ### 1. Data Engineering (`prepare/`)
-*   **Semantic Chunking:** Process raw markdown into rule-preserving chunks.
-*   **Synthetic Generation:** Create targeted datasets for **General QA**, **Personas**, **Functional Rolls**, and **Refusals**.
-*   **Aggregation:** Use `aggregate_step2_data.py` to create a perfectly balanced training set using stratified sampling.
+*   **Semantic Chunking:** `prepare_step1_data.py` processes raw markdown into rule-preserving chunks with header context.
+*   **Synthetic Generation:** 
+    *   `generate_qa.py`: Creates high-fidelity QA pairs from PHB chunks using Vertex AI.
+    *   `generate_rolls.py`: Specifically generates `[ROLL]` tag examples from spell documentation.
+    *   `generate_scenarios.py`: Simulates complex table situations (Leveling, Combat Maneuvers).
+    *   `generate_roll_refusals.py`: Teaches the model when *not* to roll (e.g., Level Mismatch).
+*   **Aggregation:** `aggregate_step2_data.py` uses stratified sampling to create a perfectly balanced multi-task training set.
 
 ### 2. Training with LoRA (`train/`)
 We use **Low-Rank Adaptation (LoRA)** to efficiently teach the model new tricks without breaking its conversational ability.
 
-*   **Step 1 (Rules):** `python3 train/step1/train_step1.py --config train/step1/config_step1_7b_24gb.json`
-*   **Step 2 (Assistant):** `python3 train/step2/train_step2.py --config train/step2/config_step2_7b_roll_test1.json`
+*   **Step 1 (Rules):** Continued pre-training on 100% rules corpus. 
+    `python3 train/step1/train_step1.py --config train/step1/config_step1_7b_r128.json`
+*   **Step 2 (Assistant):** Instruction alignment on the aggregated synthetic dataset.
+    `python3 train/step2/train_step2.py --config train/step2/config_step2_7b_roll_test1.json`
 
 ### 3. The App (`app/`)
 A sleek, "Obsidian & Gold" themed Next.js interface featuring:
 *   **Streaming Responses:** Watch the rules unfold in real-time.
-*   **Interactive Dice Roller:** Built-in component for handling `[ROLL]` tags.
-*   **Character Dashboard:** Easily update your stats to see how they impact the AI's answers.
+*   **Interactive Dice Roller:** Built-in component for handling `[ROLL]` tags with cryptographic randomness.
+*   **Character Dashboard:** Real-time profile updates that dynamically impact the AI's calculations.
 
 ---
 
