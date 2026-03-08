@@ -33,8 +33,8 @@ We don't just "chat" with the model. We train it in two distinct phases:
 
 Pre-trained adapters and merged models for RollMind are available on the Hugging Face Hub. These models are ready for inference or further fine-tuning.
 
-*   **[RollMind-v1-gemma3-12b](https://huggingface.co/<your-username>/RollMind-v1-gemma3-12b)**: The flagship version based on Gemma 3, offering the best reasoning and rule accuracy.
-*   **[RollMind-v1-gemma1.1-7b](https://huggingface.co/<your-username>/RollMind-v1-gemma1.1-7b)**: A high-performance, smaller model ideal for edge deployment or limited VRAM environments.
+*   **[RollMind-v1-gemma3-12b](https://huggingface.co/ostamand/RollMind-v1-gemma3-12b)**: The flagship version based on Gemma 3, offering the best reasoning and rule accuracy.
+*   **[RollMind-v1-gemma1.1-7b](https://huggingface.co/ostamand/RollMind-v1-gemma1.1-7b)**: A high-performance, smaller model ideal for edge deployment or limited VRAM environments.
 
 ---
 
