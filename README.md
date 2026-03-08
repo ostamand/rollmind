@@ -12,8 +12,8 @@ While generic models often hallucinate rules or mix up editions, RollMind is gro
 
 ### 🛡️ Character-Aware Reasoning
 RollMind doesn't give generic advice. When you "consult the mind," the system injects your **Character Profile** (Class, Level, Stats) into every prompt. 
-*   **Contextual DCs:** Ask "Can I grapple this orc?" and RollMind checks your Strength (Athletics) bonus against the target.
-*   **Automatic Math:** Cast *Fireball* and it automatically knows your Spell Save DC and the correct upcasting dice for your slot level.
+*   **Dynamic Spellcasting:** Cast *Fireball* and it automatically knows your Spell Save DC and the correct upcasting dice for your slot level based on your stats.
+*   **On-Demand Rolling:** Need a quick check? Ask "roll 1d20+5" and RollMind will output a functional roll tag for the app to process.
 
 ### 🎲 Functional Dice Rolls (`[ROLL]`)
 Generic LLMs are notorious for "hallucinating" dice results (usually 20s or 1s). RollMind uses a custom **Functional Tag System**:
