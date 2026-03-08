@@ -1,212 +1,63 @@
-# Gemma D&D Manual Fine-Tuning
+# 🔮 RollMind: The Ultimate D&D 2024 AI Companion
 
-This project provides a simple, structured workflow for fine-tuning a Gemma model (2b or 7b) on a D&D Player's Handbook.
+RollMind isn't just another chatbot. It is a specialized, domain-expert Large Language Model (Gemma) fine-tuned specifically on the **2024 D&D Player's Handbook**. 
 
-## 🚀 Fast VM Setup (24GB VRAM)
-
-For high-performance training on VMs with a 24GB GPU, use the automated setup script. This script handles GitHub authentication, repository cloning, and dependency installation:
-
-```bash
-# 1. Download and run the setup script
-curl -fsSL -o setup_vm.sh https://raw.githubusercontent.com/<your-username>/rollmind/main/setup_vm.sh
-chmod +x setup_vm.sh
-./setup_vm.sh
-
-# 2. Activate the environment
-source venv/bin/activate
-```
-
-### Authentication Summary
-- **GitHub CLI (gh):** Required to clone and push to your private repository.
-- **Hugging Face:** Required to download gated Gemma weights.
-- **Google Cloud (gcloud):** Required to sync data from GCS and generate synthetic QA.
+While generic models often hallucinate rules or mix up editions, RollMind is ground-truth aligned with the 2024 mechanics—from **Weapon Masteries** and **Heroic Inspiration** to the new **Crafting** and **Exhaustion** rules.
 
 ---
 
-## 1. Setup (Manual)
+## ✨ What Makes RollMind Unique?
 
-### Install Dependencies
-```bash
-pip install -r requirements.txt
-```
+### 🛡️ Character-Aware Reasoning
+RollMind doesn't give generic advice. When you "consult the mind," the system injects your **Character Profile** (Class, Level, Stats) into every prompt. 
+*   **Contextual DCs:** Ask "Can I grapple this orc?" and RollMind checks your Strength (Athletics) bonus against the target.
+*   **Automatic Math:** Cast *Fireball* and it automatically knows your Spell Save DC and the correct upcasting dice for your slot level.
 
-### Authentication
-**Hugging Face:** Gemma is a gated model. Log in to download weights:
-```bash
-huggingface-cli login
-```
+### 🎲 Functional Dice Rolls (`[ROLL]`)
+Generic LLMs are notorious for "hallucinating" dice results (usually 20s or 1s). RollMind uses a custom **Functional Tag System**:
+1.  The model identifies a rule requiring a roll.
+2.  It outputs a tag: `[ROLL]8d6[/ROLL]`.
+3.  The **Web Application** intercepts this tag, performs a **true cryptographic roll**, and streams the result back to you in a beautiful animation.
+*See [INFERENCE_FLOW.md](./INFERENCE_FLOW.md) for the full technical breakdown.*
 
-**Google Cloud (Vertex AI):** Required for Q&A generation in Step 2:
-```bash
-gcloud auth application-default login
-```
+### 📚 Dual-Step Mastery
+We don't just "chat" with the model. We train it in two distinct phases:
+1.  **Domain Adaptation (Step 1):** Continued pre-training on 100% of the PHB text to ensure absolute rule coverage.
+2.  **Instruction Alignment (Step 2):** Fine-tuning on thousands of synthetic Q&A pairs and combat scenarios generated via Vertex AI.
 
-### Sync Data from GCS
-If you are training on a remote VM (e.g., Lambda Labs, RunPod, or local server), you can download your pre-prepared data from a private GCS bucket.
+---
 
-```bash
-# Using Application Default Credentials (ADC)
-python3 download_data.py --bucket your-bucket-name --prefix data/ --out ./data
-```
+## 🤗 Hugging Face Models
 
-## 2. Step 1: Data Preparation
+Pre-trained adapters and merged models for RollMind are available on the Hugging Face Hub. These models are ready for inference or further fine-tuning.
 
-Process raw markdown files into semantic chunks. This script produces `train_chunks.jsonl`, `val_chunks.jsonl`, and `full_chunks.jsonl` (the entire corpus).
+*   **[RollMind-v1-gemma3-12b](https://huggingface.co/<your-username>/RollMind-v1-gemma3-12b)**: The flagship version based on Gemma 3, offering the best reasoning and rule accuracy.
+*   **[RollMind-v1-gemma1.1-7b](https://huggingface.co/<your-username>/RollMind-v1-gemma1.1-7b)**: A high-performance, smaller model ideal for edge deployment or limited VRAM environments.
 
-```bash
-python3 prepare/prepare_step1_data.py
-```
+---
 
-## 3. Step 2: Q&A Generation (Instruction Data)
+## 🛠️ The Pipeline
 
-We use two methods to generate high-quality synthetic Question-Answer pairs from the D&D manual.
+### 1. Data Engineering (`prepare/`)
+*   **Semantic Chunking:** Process raw markdown into rule-preserving chunks.
+*   **Synthetic Generation:** Create targeted datasets for **General QA**, **Personas**, **Functional Rolls**, and **Refusals**.
+*   **Aggregation:** Use `aggregate_step2_data.py` to create a perfectly balanced training set using stratified sampling.
 
-### Method A: General QA Generation
-Generates a broad set of Q&A pairs from every chunk of the manual.
-```bash
-python3 prepare/generate_qa.py --project your-project-id
-```
+### 2. Training with LoRA (`train/`)
+We use **Low-Rank Adaptation (LoRA)** to efficiently teach the model new tricks without breaking its conversational ability.
 
-### Method B: Scenario-Based Generation (Recommended)
-Generates targeted, high-level Q&A pairs based on specific player personas (e.g., Leveling Up, Combat, Social Skills).
+*   **Step 1 (Rules):** `python3 train/step1/train_step1.py --config train/step1/config_step1_7b_24gb.json`
+*   **Step 2 (Assistant):** `python3 train/step2/train_step2.py --config train/step2/config_step2_7b_roll_test1.json`
 
-```bash
-python3 prepare/generate_scenarios.py --project your-project-id
-```
+### 3. The App (`app/`)
+A sleek, "Obsidian & Gold" themed Next.js interface featuring:
+*   **Streaming Responses:** Watch the rules unfold in real-time.
+*   **Interactive Dice Roller:** Built-in component for handling `[ROLL]` tags.
+*   **Character Dashboard:** Easily update your stats to see how they impact the AI's answers.
 
-### Method C: Roll-Specific Data Generation
-Generates training data for a D&D assistant that can output dice rolls using a custom `[ROLL]XdY+Z[/ROLL]` tag, including refusals for impossible actions.
+---
 
-```bash
-# 1. Generate successful roll examples
-python3 prepare/generate_rolls.py --project your-project-id
-
-# 2. Generate roll-specific refusals (e.g., Level 8 spell at level 1)
-python3 prepare/generate_roll_refusals.py --project your-project-id
-```
-
-## 4. Step 3: Continued Pre-training (Domain Adaptation)
-
-Train the model on the full text of the manual (`full_chunks.jsonl`) to ensure 100% rule coverage.
-
-**For 24GB GPUs (High Throughput):**
-```bash
-python3 train/step1/train_step1.py --config train/step1/config_step1_7b_24gb.json
-```
-
-**For 12GB GPUs (Low Memory):**
-```bash
-python3 train/step1/train_step1.py --config train/step1/config_step1.json --low-mem
-```
-
-## 5. Step 4: Instruction Fine-Tuning
-
-Fine-tune the domain-adapted model on the synthetic Q&A pairs.
-
-**For 24GB GPUs (High Throughput):**
-```bash
-python3 train/step2/train_step2.py --config train/step2/config_step2_7b_24gb.json
-```
-
-**For 12GB GPUs (Low Memory):**
-```bash
-python3 train/step2/train_step2.py --config train/step2/config_step2.json --low-mem
-```
-
-## 6. Evaluation
-
-Calculate the Average Loss and Perplexity of a model on the validation set.
-
-### Baseline (Original Gemma)
-```bash
-python3 eval/evaluate_model.py \
-    --model_id google/gemma-7b-it \
-    --dataset_path data/step2/val_qa.jsonl
-```
-
-### Domain Adapted (After Step 2)
-```bash
-python3 eval/evaluate_model.py \
-    --model_id google/gemma-7b-it \
-    --adapter_path ./out/step2/test1_7b_r64 \
-    --dataset_path data/step2/val_qa.jsonl
-```
-
-## 7. Inference
-
-Use the `inference.py` script to chat with your model.
-
-### Chat with Fine-Tuned Model (LoRA)
-```bash
-python3 inference.py \
-    --model_id google/gemma-7b-it \
-    --adapter_path ./out/step2/test1_7b_r64/checkpoint-250 \
-    --prompt "What is the hit point roll dice for a priest"
-```
-
-## 8. Deployment (Vertex AI)
-
-To deploy the fine-tuned model as a scalable API on Vertex AI:
-
-### A. Merge LoRA Weights
-Before deployment, merge the LoRA adapter back into the base model weights.
-```bash
-python3 endpoint/merge_model.py \
-    --model_id google/gemma-7b-it \
-    --adapter_path ./out/step2/test1_7b_r64/checkpoint-250 \
-    --output_dir ./merged_model
-```
-
-### B. Deploy to Vertex AI Endpoint
-This script uploads the merged model to GCS (if not already present), registers it in the Vertex AI Model Registry, and deploys it to an L4 GPU endpoint.
-
-**Important:** Vertex AI does not support the `global` location for model deployment. Ensure your location is set to a specific region (e.g., `us-east4`).
-
-```bash
-python3 endpoint/deploy.py \
-    --gcs_path gs://ostamand/rollmind/models/rollmind-v1 \
-    --name rollmind-v1 \
-    --local_model_dir ./merged_model \
-    --location us-east4
-```
-
-**Note:** If the model weights are already in your GCS bucket, you can skip the upload step using:
-```bash
-python3 endpoint/deploy.py --gcs_path gs://ostamand/rollmind/models/rollmind-v1 --skip-upload --location us-east4
-```
-
-### C. Toggling Costs (On/Off)
-To avoid 24/7 GPU costs, you can "turn off" the endpoint when not in use. This undeploys the model but keeps the endpoint and model configuration intact.
-
-```bash
-# Turn OFF (Stop GPU billing)
-python3 endpoint/toggle_endpoint.py off --name rollmind-v1
-
-# Turn ON (Redeploy and resume)
-python3 endpoint/toggle_endpoint.py on --name rollmind-v1
-```
-
-### D. Cleanup
-To permanently remove the endpoint and model:
-```bash
-python3 endpoint/cleanup.py --endpoint_id <YOUR_ENDPOINT_ID>
-```
-
-## Project Structure
-- `data/`: Raw markdown and generated JSONL datasets.
-- `prepare/`: Scripts for data processing, splitting, and QA generation.
-- `train/`: Fine-tuning scripts and JSON configurations for both steps.
-- `eval/`: Evaluation scripts for measuring performance.
-- `endpoint/`: Deployment automation for Vertex AI (merging, uploading, and hosting).
-- `app/`: Source code for the web interface and API proxy.
-- `out/`: Trained model adapters, metrics, and checkpoints.
-
-
-## 9. Current Best
-
-```bash
-python3 inference.py --prompt "What weapons can a Fighter use" --adapter_path ./out/step2/test1_7b_r64/checkpoint-250 --model_id 'google/gemma-7b-it'
-```
-
-## References
-- [Gemma Prompt Structure Documentation](https://ai.google.dev/gemma/docs/core/prompt-structure)
+## ☁️ Cloud Deployment (Vertex AI)
+RollMind is ready for production. 
+*   **Merge:** Use `endpoint/merge_model.py` to fuse your LoRA weights.
+*   **Deploy:** Use `endpoint/deploy.py` to push to a Vertex AI L4 GPU for scalable, low-latency API access.
