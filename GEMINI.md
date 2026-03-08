@@ -1,95 +1,79 @@
-# GEMINI.md - Rollmind Project Context
+# GEMINI.md - RollMind Project Context
 
 ## Project Overview
-**Rollmind** is a specialized pipeline for fine-tuning Large Language Models (specifically Google's Gemma-2b-it) on D&D Player's Handbook documentation. The goal is to create a domain-specific assistant capable of understanding and answering questions based on the 2024 D&D rules.
+**RollMind** is a high-fidelity pipeline for fine-tuning Large Language Models (specifically Google's **Gemma 3 12B** and **Gemma 1.1 7B**) on the **2024 D&D Player's Handbook**. The goal is to create a domain-expert assistant capable of character-aware reasoning and functional mechanical execution (dice rolls).
 
 ### Main Technologies
-- **Language:** Python
-- **Frameworks:** Hugging Face `transformers`, `peft` (LoRA), `trl` (SFTTrainer), `datasets`.
-- **Hardware Optimization:** `bitsandbytes` (4-bit quantization), `accelerate`.
-- **API Integration:** Vertex AI SDK (Gemini 3 Flash Preview) for synthetic data generation.
+- **Language:** Python 3.12, TypeScript (Next.js)
+- **Frameworks:** Hugging Face `transformers`, `peft` (LoRA), `trl` (SFTTrainer), `datasets`, `FastAPI`.
+- **Hardware Optimization:** `bitsandbytes` (4-bit NF4 quantization), `accelerate`, `sdpa` (Flash Attention).
+- **API Integration:** Vertex AI (Gemini 3 Flash Preview) for complex synthetic data generation.
 
 ### Architecture
-The project follows a multi-step fine-tuning workflow:
-1.  **Data Preparation:** Chunking markdown files into semantic units, including a full-corpus file.
-2.  **Instruction Data Generation:** Using Vertex AI to create Q&A pairs from all manual chunks.
-3.  **Step 1 (Domain Adaptation):** Continued pre-training on the 100% full corpus. Validation is performed against the synthetic Q&A set to monitor assistant behavioral health while learning rules.
-4.  **Step 2 (Instruction Tuning):** Fine-tuning the domain-adapted model on synthetic Q&A pairs.
-5.  **Evaluation & Inference:** Measuring perplexity and interactive testing.
+The project follows a rigorous two-step fine-tuning workflow:
+1.  **Step 1: Domain Adaptation:** Continued pre-training on 100% of the PHB 2024 text chunks (~3000 chars each) with preserved header context to ensure deep rule retention.
+2.  **Step 2: Instruction Alignment:** Multi-task SFT on a stratified synthetic dataset including Contextual QA, Functional Rolls (`[ROLL]` tags), Gameplay Scenarios, and Domain-Specific Refusals.
 
 ## Building and Running
 
 ### Setup
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Login to Hugging Face (Gemma is gated)
 huggingface-cli login
-
-# Login to Google Cloud ADC (Required for Vertex AI)
 gcloud auth application-default login
 ```
 
 ### Data Pipeline
 ```bash
-# 1. Chunking Markdown (Produces full_chunks.jsonl)
+# 1. Semantic Chunking
 python3 prepare/prepare_step1_data.py
 
-# 2. Generating Q&A (Must be run before Step 1 Training for validation)
-# Can use --project/--location or GOOGLE_CLOUD_PROJECT/GOOGLE_CLOUD_LOCATION env vars
-python3 prepare/generate_qa.py
+# 2. Synthetic Generation (QA, Rolls, Scenarios, Refusals)
+python3 prepare/generate_qa.py --project $PROJ
+python3 prepare/generate_rolls.py --project $PROJ
+python3 prepare/generate_scenarios.py --project $PROJ
+python3 prepare/generate_roll_refusals.py --project $PROJ
+
+# 3. Stratified Aggregation
+python3 prepare/aggregate_step2_data.py
 ```
 
 ### Training
 ```bash
-# Step 1: Domain Adaptation (Trains on 100% rules, validates on Q&A)
-python3 train/step1/train_step1.py --config train/step1/config_step1.json
+# Step 1: Domain Adaptation (e.g. 12B or 7B)
+python3 train/step1/train_step1.py --config train/step1/config_step1_7b_r128.json
 
-# Step 2: Instruction Fine-tuning
-python3 train/step2/train_step2.py --config train/step2/config_step2.json
+# Step 2: Instruction Alignment
+python3 train/step2/train_step2.py --config train/step2/config_step2_7b_roll_test1.json
 ```
 
-### Evaluation & Inference
-```bash
-# Evaluate Perplexity
-python3 eval/evaluate_model.py --model_id google/gemma-2b-it --adapter_path ./out/step2 --dataset_path data/step2/val_qa.jsonl
+### The Web App (`app/`)
+RollMind includes a full-stack Next.js + FastAPI application with:
+-   **Streaming Inference:** Real-time token delivery.
+-   **Character Context:** Dynamic injection of player stats into prompts.
+-   **DiceRoller:** Intercepts `[ROLL]` tags for cryptographic, animated dice results.
 
-# Interactive Inference
-python3 inference.py \
-    --model_id google/gemma-2b-it \
-    --adapter_path ./out/step2 \
-    --prompt "What is the hit point roll dice for a priest"
+```bash
+./app/start.sh
 ```
 
 ## Development Conventions
 
-### Data Format
-- **Raw Chunks:** JSONL files with a single `"text"` field. Used in **Step 1** for domain adaptation. No instruction template is applied here to allow the model to focus purely on learning domain knowledge (D&D rules) via Next Token Prediction.
-- **Instruction Data:** JSONL files with a single `"text"` field formatted using the official Gemma instruction template. Used in **Step 2** to teach the model how to act as an assistant using the knowledge gained in Step 1.
-  ```
-  <start_of_turn>user
-  <question><end_of_turn>
-  <start_of_turn>model
-  <answer><end_of_turn>
-  ```
+### Data Format & Templating
+- **Instruction Template:** Official Gemma template is used for all Step 2 data and inference.
+- **Context Injection:** Character profiles are prepended to the user prompt:
+  `Character Profile: [Class] [Level]. Stats: [Score] ([Mod])...`
+- **Functional Tags:** Mechanical actions use the `[ROLL]XdY+Z[/ROLL]` format.
 
-### Training Strategy: Fact Coverage
-- **100% Rule Training:** To ensure the model knows all rules, Step 1 trains on 100% of the manual chunks. 
-- **Cross-Set Validation:** Validation during Step 1 is done using the Q&A pairs from Step 2 to ensure rule learning doesn't break conversational ability.
-
-### Model Configuration
-- **Quantization:** 4-bit NormalFloat (NF4) with double quantization is used by default.
-- **LoRA:** Targeting all linear modules (`q_proj`, `v_proj`, etc.) for maximum effectiveness.
-- **Precision:** Uses `bf16` if supported by hardware, otherwise falls back to `fp16`.
-
-### Documentation
-- **README Updates:** It is critical to keep `README.md` updated whenever changes are made that impact the project's usage or workflow. 
-- **Content:** `README.md` should provide a high-level summary of how to use all available scripts and clearly outline the end-to-end training, evaluation, and inference flow.
+### Training Strategy: Stability & Accuracy
+- **Fact Coverage:** Step 1 trains on 100% of rules to prevent knowledge gaps.
+- **Completion-Only Loss:** Step 2 masks the user prompt during training to optimize only for assistant accuracy.
+- **High-Rank LoRA:** Uses `r=64` or `r=128` to capture the technical nuance of D&D rules.
 
 ### Project Structure
-- `prepare/`: Data engineering and synthetic data generation.
-- `train/`: Training logic and step-specific configurations.
-- `eval/`: Metrics and validation logic.
-- `data/`: Source markdown, intermediate chunks, and final training datasets.
-- `out/`: Checkpoints, results, and saved LoRA adapters.
+- `prepare/`: Advanced data engineering and Vertex AI generation.
+- `train/`: LoRA and Partial fine-tuning logic.
+- `app/`: Web frontend and FastAPI backend.
+- `hf_hub/`: Utilities for model card generation and Hub uploads.
+- `results/`: Training logs and metrics analysis.
+- `data/`: PHB source markdown, split chunks, and aggregated synthetic sets.
