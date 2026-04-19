@@ -1,7 +1,4 @@
-"use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -9,7 +6,6 @@ import {
   ArrowUp,
   Copy,
   Info,
-  Send,
   Settings,
   ThumbsDown,
   ThumbsUp,
@@ -17,16 +13,15 @@ import {
   UserCircle,
   X,
 } from "lucide-react";
-import styles from "./page.module.css";
+import styles from "./App.module.css";
 import DiceRoller from "./components/DiceRoller";
 import {
-  CharacterProfile,
-  Config,
   fetchConfig,
   submitConsultation,
   submitFeedback,
   updateConfig,
-} from "../lib/api";
+} from "./lib/api";
+import type { CharacterProfile, Config } from "./lib/api";
 
 interface Entry {
   id: string;
@@ -84,7 +79,7 @@ const CLASSES = [
 ];
 const STATS = ["STR", "DEX", "CON", "INT", "WIS", "CHA"] as const;
 
-export default function RollMindPage() {
+export default function App() {
   const [inquiry, setInquiry] = useState("");
   const [history, setHistory] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -92,7 +87,7 @@ export default function RollMindPage() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [showBackToTop, setShowBackToTop] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState(
+  const [processingMessage] = useState(
     PROCESSING_MESSAGES[0],
   );
   const [config, setConfig] = useState<Config>({
@@ -405,7 +400,7 @@ export default function RollMindPage() {
     let accumulatedAnswer = "";
 
     try {
-      const sendProfile = process.env.NEXT_PUBLIC_DISABLE_PROFILE !== "true"
+      const sendProfile = import.meta.env.VITE_DISABLE_PROFILE !== "true"
         ? profile
         : undefined;
 
@@ -464,13 +459,12 @@ export default function RollMindPage() {
               <Info size={24} color="var(--accent)" />
             </button>
           </div>
-          <Image
+          <img
             src="/RollMind-logo-only.webp"
             alt="RollMind Logo"
             width={100}
             height={100}
             className={styles.logo}
-            priority
           />
           <div className={styles.headerActions}>
             <button
@@ -488,7 +482,7 @@ export default function RollMindPage() {
             >
               <Trash2 size={24} color="var(--accent)" />
             </button>
-            {process.env.NEXT_PUBLIC_HIDE_CONFIG !== "true" && (
+            {import.meta.env.VITE_HIDE_CONFIG !== "true" && (
               <button
                 className={styles.actionButton}
                 onClick={() => setIsConfigOpen(true)}
@@ -848,7 +842,7 @@ export default function RollMindPage() {
             className={styles.sendButton}
             disabled={isLoading || !inquiry.trim()}
           >
-            <Image
+            <img
               src="/RollMind-send.png"
               alt="Consult"
               width={24}
@@ -865,7 +859,7 @@ export default function RollMindPage() {
             <div className={styles.cardHeader}>
               <h2 className={styles.cardQuestion}>Inquiry: {entry.question}</h2>
               <div style={{ display: "flex", gap: "0.5rem" }}>
-                {process.env.NEXT_PUBLIC_HIDE_CONFIG !== "true" &&
+                {import.meta.env.VITE_HIDE_CONFIG !== "true" &&
                   entry.answer && (
                   <button
                     onClick={() => copyToClipboard(entry.answer)}

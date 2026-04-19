@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Dices } from "lucide-react";
-import styles from "../page.module.css";
+import styles from "../App.module.css";
 
 interface DiceRollerProps {
   formula: string;
@@ -29,7 +29,7 @@ export default function DiceRoller({ formula, isComplete }: DiceRollerProps) {
 
   // Use refs to track state across re-renders/remounts during streaming
   const formulaRef = useRef(normalizedFormula);
-  const finalizeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const finalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 2. Handle Formula Changes (Streaming)
   useEffect(() => {

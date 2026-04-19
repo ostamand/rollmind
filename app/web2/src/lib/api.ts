@@ -1,5 +1,5 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-export const CONFIG_SECRET = process.env.NEXT_PUBLIC_CONFIG_SECRET || "";
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+export const CONFIG_SECRET = import.meta.env.VITE_CONFIG_SECRET || "";
 
 export interface Config {
   mode: string;

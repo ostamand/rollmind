@@ -15,7 +15,6 @@ load_dotenv()
 # Heavy ML imports are moved inside the LocalModelManager to allow 
 # the API to run in a lightweight CPU-only container for Vertex mode.
 
-# Configuration from environment
 INFERENCE_MODE = os.getenv("INFERENCE_MODE", "local").lower() # 'local' or 'vertex'
 
 # Local Config
@@ -283,7 +282,7 @@ class VertexModelManager(BaseManager):
                 error_detail = response.text
                 print(f"❌ Vertex API Error ({response.status_code}): {error_detail}")
                 if response.status_code == 400:
-                    yield "\n[[SYSTEM_MESSAGE: The RollMind engine is currently offline or unavailable. Please try again in a few minutes.]]"
+                    yield "\n[[SYSTEM_MESSAGE: The RollMind engine is currently offline or unavailable.]]"
                 else:
                     yield f"\n[[SYSTEM_MESSAGE: The RollMind engine encountered an issue (Error {response.status_code}).]]"
                 return

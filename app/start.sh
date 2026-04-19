@@ -13,7 +13,7 @@ API_PID=$!
 
 # 2. Start the Frontend Web
 echo "✨ Launching Frontend Web (Next.js)..."
-cd "$APP_DIR/web"
+cd "$APP_DIR/web2"
 npm run dev &
 WEB_PID=$!
 

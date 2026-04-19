@@ -1,0 +1,21 @@
+{
+  "name": "rollmind",
+  "version": "1.0.0",
+  "description": "![RollMind Banner](assets/RollMind-banner.jpg)",
+  "main": "index.js",
+  "scripts": {
+    "enable:model-6b": "SERVICE_URL=$(gcloud run services describe rollmind-endpoint-manager --platform managed --region us-east4 --format='value(status.url)') && curl -H \"Authorization: Bearer $(gcloud auth print-identity-token)\" \"$SERVICE_URL/toggle?action=on&name=rollmind-gemma-7b&model_name=rollmind-gemma-7b\"",
+    "disable:model": "SERVICE_URL=$(gcloud run services describe rollmind-endpoint-manager --platform managed --region us-east4 --format='value(status.url)') && curl -H \"Authorization: Bearer $(gcloud auth print-identity-token)\" \"$SERVICE_URL/toggle?action=off&name=rollmind-gemma-7b&model_name=rollmind-gemma-7b\"",
+    "deploy:web": "npm run deploy --prefix app/web2" 
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ostamand/rollmind.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ostamand/rollmind/issues"
+  },
+  "homepage": "https://github.com/ostamand/rollmind#readme"
+}

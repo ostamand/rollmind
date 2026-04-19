@@ -43,7 +43,19 @@ python3 endpoint/deploy.py \
     --location us-east4
 ```
 
-### Option B: Skip Upload (Already in GCS)
+### Option B: Deploy 12B Model (Dual GPU)
+For larger models like Gemma 3 12B, you need more VRAM. Use 2x L4 GPUs by specifying the machine type and accelerator count:
+
+```bash
+python3 endpoint/deploy.py \
+    --local_path ./merged_model \
+    --gcs_path gs://ostamand/rollmind/models/rollmind-12b \
+    --name rollmind-12b \
+    --machine_type g2-standard-24 \
+    --accelerator_count 2
+```
+
+### Option C: Skip Upload (Already in GCS)
 If you've already uploaded the artifacts to GCS and just want to register/deploy the model:
 ```bash
 python3 endpoint/deploy.py \
@@ -53,7 +65,7 @@ python3 endpoint/deploy.py \
     --location us-east4
 ```
 
-### Option C: Update Existing Endpoint
+### Option D: Update Existing Endpoint
 The script automatically detects if an endpoint with the same `--name` already exists. If it does:
 1. It deploys the new model version to the existing endpoint.
 2. Once the new version is healthy, it **automatically undeploys** the old version to save costs.
@@ -93,6 +105,7 @@ python3 endpoint/cleanup.py --location us-east4 --endpoint_id 1234567890
 
 ## Technical Details
 - **Container:** Uses the official Vertex Vision `pytorch-vllm-serve` container.
-- **Hardware:** Deploys to `g2-standard-12` with 1x `NVIDIA_L4` GPU (24GB VRAM).
-- **Model Parameters:** Configured with `--max-model-len=1024` and `--tensor-parallel-size=1`.
+- **Hardware (7B):** Deploys to `g2-standard-12` with 1x `NVIDIA_L4` GPU (24GB VRAM).
+- **Hardware (12B):** Deploys to `g2-standard-24` with 2x `NVIDIA_L4` GPUs (48GB VRAM).
+- **Model Parameters:** Configured with `--max-model-len=512`. `--tensor-parallel-size` is automatically matched to your `--accelerator_count`.
 - **Region Support:** Ensure your `--location` matches a region where `G2` instances are available (e.g., `us-east4`, `us-central1`).

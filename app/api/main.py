@@ -2,7 +2,7 @@ import os
 import asyncio
 from datetime import datetime
 from typing import Optional
-from fastapi import FastAPI, Request, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -10,9 +10,10 @@ from google.cloud import firestore
 
 from model import manager
 
+CONFIG_SECRET_KEY = os.getenv("CONFIG_SECRET_KEY")
+
 app = FastAPI(title="RollMind API")
 
-# Initialize Firestore
 db = None
 try:
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -24,14 +25,10 @@ try:
 except Exception as e:
     print(f"Failed to initialize Firestore: {e}")
 
-# Security configuration
-CONFIG_SECRET_KEY = os.getenv("CONFIG_SECRET_KEY")
-
 def verify_config_access(x_config_secret: Optional[str] = Header(None)):
     if CONFIG_SECRET_KEY and x_config_secret != CONFIG_SECRET_KEY:
         raise HTTPException(status_code=403, detail="Invalid or missing X-Config-Secret header")
 
-# Enable CORS for Next.js
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # In production, restrict this to your domain
@@ -168,7 +165,6 @@ async def save_feedback(feedback: FeedbackRequest):
             "date_str": datetime.now().isoformat()
         }
         
-        # Use a subagent or direct firestore call to add document
         db.collection("rollmind_feedbacks").add(doc_data)
         
         return {"message": "Feedback saved successfully"}

@@ -37,7 +37,7 @@ def upload_to_gcs(local_path, gcs_uri):
             blob.upload_from_filename(local_file)
     print("Upload complete.")
 
-def deploy_model(project, location, model_display_name, gcs_uri, local_path=None, skip_upload=False):
+def deploy_model(project, location, model_display_name, gcs_uri, local_path=None, skip_upload=False, machine_type="g2-standard-12", accelerator_count=1):
     aiplatform.init(project=project, location=location)
 
     if not skip_upload:
@@ -62,7 +62,7 @@ def deploy_model(project, location, model_display_name, gcs_uri, local_path=None
             "--host=0.0.0.0",
             "--port=8080",
             "--max-model-len=512", 
-            "--tensor-parallel-size=1"
+            f"--tensor-parallel-size={accelerator_count}"
         ],
         serving_container_predict_route="/v1/chat/completions",
         serving_container_health_route="/health",
@@ -87,9 +87,9 @@ def deploy_model(project, location, model_display_name, gcs_uri, local_path=None
     # Deploy new model
     endpoint.deploy(
         model=model,
-        machine_type="g2-standard-12",
+        machine_type=machine_type,
         accelerator_type="NVIDIA_L4",
-        accelerator_count=1,
+        accelerator_count=accelerator_count,
         min_replica_count=1,
         max_replica_count=1,
         deploy_request_timeout=1800, 
@@ -117,6 +117,8 @@ if __name__ == "__main__":
     parser.add_argument("--gcs_path", type=str, required=True, help="GCS URI (gs://bucket/path/) to store model artifacts")
     parser.add_argument("--name", type=str, default="rollmind-gemma-7b", help="Display name for model and endpoint")
     parser.add_argument("--skip-upload", action="store_true", help="Skip uploading local files to GCS")
+    parser.add_argument("--machine_type", type=str, default="g2-standard-12", help="Vertex AI machine type")
+    parser.add_argument("--accelerator_count", type=int, default=1, help="Number of GPUs")
 
     args = parser.parse_args()
 
@@ -129,5 +131,7 @@ if __name__ == "__main__":
         model_display_name=args.name, 
         gcs_uri=args.gcs_path,
         local_path=args.local_path,
-        skip_upload=args.skip_upload
+        skip_upload=args.skip_upload,
+        machine_type=args.machine_type,
+        accelerator_count=args.accelerator_count
     )

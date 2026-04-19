@@ -69,3 +69,4 @@ A sleek, "Obsidian & Gold" themed Next.js interface featuring:
 RollMind is ready for production. 
 *   **Merge:** Use `endpoint/merge_model.py` to fuse your LoRA weights.
 *   **Deploy:** Use `endpoint/deploy.py` to push to a Vertex AI L4 GPU for scalable, low-latency API access.
+*   **Endpoint Manager (Cost Control):** A dedicated Cloud Run service (`cloud_run/rollmind_endpoint_manager`) allows you to toggle the expensive GPU endpoints ON/OFF remotely via a private, IAM-authenticated API. This ensures you only pay for compute when actually testing or playing.
